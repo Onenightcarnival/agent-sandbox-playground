@@ -1,5 +1,10 @@
-import { defineConfig } from 'vitepress'
+import { defineConfig, loadEnv } from 'vitepress'
 import path from 'node:path'
+
+const env = loadEnv('', path.resolve(__dirname, '../..'), '')
+const apiTarget = env.API_TARGET || 'http://localhost:8000'
+
+console.log(`[proxy] API_TARGET = ${apiTarget}`)
 
 export default defineConfig({
   title: 'Agent Sandbox',
@@ -23,8 +28,9 @@ export default defineConfig({
     server: {
       proxy: {
         '/api': {
-          target: process.env.API_TARGET || 'http://localhost:8000',
+          target: apiTarget,
           changeOrigin: true,
+          secure: false,
           rewrite: (p: string) => p.replace(/^\/api/, '')
         }
       }

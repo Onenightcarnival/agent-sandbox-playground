@@ -186,4 +186,5 @@ docs/.vitepress/dist/
 
 # Local env
 *.local
-.env.*
+.env
+.env.local

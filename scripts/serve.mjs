@@ -4,20 +4,35 @@
  *
  * Usage:
  *   npm run build
- *   API_TARGET=http://your-llm-api:8000 node scripts/serve.mjs
+ *   npm run serve
  *
+ * Configure API_TARGET in .env file or via environment variable.
  * Then open http://localhost:3000 and set Base URL to /api/v1
  */
 
 import http from 'node:http'
+import https from 'node:https'
 import fs from 'node:fs'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+const __dirname = path.dirname(fileURLToPath(import.meta.url))
+const ROOT = path.resolve(__dirname, '..')
+
+// Load .env file
+const envFile = path.join(ROOT, '.env')
+if (fs.existsSync(envFile)) {
+  for (const line of fs.readFileSync(envFile, 'utf-8').split('\n')) {
+    const match = line.match(/^\s*([^#=]+?)\s*=\s*(.+?)\s*$/)
+    if (match && !process.env[match[1]]) {
+      process.env[match[1]] = match[2]
+    }
+  }
+}
+
 const PORT = parseInt(process.env.PORT || '3000')
 const API_TARGET = (process.env.API_TARGET || '').replace(/\/+$/, '')
-const __dirname = path.dirname(fileURLToPath(import.meta.url))
-const DIST = path.resolve(__dirname, '../docs/.vitepress/dist')
+const DIST = path.resolve(ROOT, 'docs/.vitepress/dist')
 
 if (!API_TARGET) {
   console.error('Usage: API_TARGET=http://your-llm-api:8000 node scripts/serve.mjs')
@@ -59,19 +74,23 @@ function serveStatic(req, res) {
   fs.createReadStream(filePath).pipe(res)
 }
 
+const isHttps = API_TARGET.startsWith('https')
+const transport = isHttps ? https : http
+
 function proxyRequest(req, res) {
   const targetPath = req.url.replace(/^\/api/, '')
   const targetUrl = new URL(targetPath, API_TARGET)
 
   const options = {
     hostname: targetUrl.hostname,
-    port: targetUrl.port,
+    port: targetUrl.port || (isHttps ? 443 : 80),
     path: targetUrl.pathname + targetUrl.search,
     method: req.method,
     headers: { ...req.headers, host: targetUrl.host },
+    rejectUnauthorized: false,
   }
 
-  const proxyReq = http.request(options, (proxyRes) => {
+  const proxyReq = transport.request(options, (proxyRes) => {
     res.writeHead(proxyRes.statusCode, {
       ...proxyRes.headers,
       'access-control-allow-origin': '*',
