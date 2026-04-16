@@ -41,8 +41,8 @@ async function initPyodide() {
   })
 
   // Pre-install pyodide-http to enable requests/httpx in browser
-  await py.loadPackage(['micropip'])
-  await py.runPythonAsync(`
+  await pyodide.loadPackage(['micropip'])
+  await pyodide.runPythonAsync(`
 import micropip
 await micropip.install('pyodide-http')
 import pyodide_http
