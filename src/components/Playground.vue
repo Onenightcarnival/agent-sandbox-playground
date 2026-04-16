@@ -317,21 +317,23 @@ function clearChat() {
   flex-direction: column;
   gap: 12px;
   padding: 12px 0;
-  min-height: 80vh;
+  height: 85vh;
 }
 
 .main-layout {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 12px;
   flex: 1;
-  min-height: 600px;
+  min-height: 0;
 }
 
 .left-section {
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-width: 0;
+  min-height: 0;
 }
 
 .editor-section {
@@ -346,6 +348,7 @@ function clearChat() {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  min-height: 0;
 }
 
 .chat-section {
@@ -355,6 +358,7 @@ function clearChat() {
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
   overflow: hidden;
+  min-height: 0;
 }
 
 .section-header {
@@ -396,7 +400,7 @@ function clearChat() {
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
   overflow: hidden;
-  min-height: 150px;
+  min-height: 0;
 }
 
 .sandbox-status {

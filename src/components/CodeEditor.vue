@@ -46,6 +46,7 @@ onMounted(() => {
           emit('update:modelValue', update.state.doc.toString())
         }
       }),
+      EditorView.lineWrapping,
       EditorView.theme({
         '&': { height: '100%', fontSize: '13px' },
         '.cm-scroller': { overflow: 'auto' },

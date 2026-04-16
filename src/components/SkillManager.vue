@@ -231,6 +231,9 @@ function openFilePicker() {
   font-size: 13px;
   font-weight: 600;
   color: var(--vp-c-text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .skill-desc {
@@ -239,7 +242,6 @@ function openFilePicker() {
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  max-width: 260px;
 }
 
 .skill-meta {
