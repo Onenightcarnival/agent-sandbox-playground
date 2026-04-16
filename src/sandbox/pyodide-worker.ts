@@ -121,12 +121,17 @@ async function executeCode(
       const fileName = parts.pop()!
       const dirPath = [SKILLS_DIR, ...parts].join('/')
       dirs.add(dirPath)
+      // Also add all ancestor directories between SKILLS_DIR and dirPath
+      // so that subdirectories like "scripts/" are importable as packages
+      for (let i = 1; i <= parts.length; i++) {
+        dirs.add([SKILLS_DIR, ...parts.slice(0, i)].join('/'))
+      }
       py.FS.mkdirTree(dirPath)
       py.FS.writeFile(`${dirPath}/${fileName}`, file.content)
       self.postMessage({ type: 'log', level: 'info', message: `Wrote ${dirPath}/${fileName}` })
     }
 
-    // Ensure each directory has __init__.py and is on sys.path
+    // Ensure each directory has __init__.py so subpackages are importable
     for (const dir of dirs) {
       try { py.FS.writeFile(`${dir}/__init__.py`, '') } catch {}
     }
@@ -155,7 +160,34 @@ for _mod_name in list(sys.modules.keys()):
     await py.runPythonAsync(addPathCode)
 
     // Execute the call expression
-    const result = await py.runPythonAsync(callExpression)
+    // Detect script-mode: "run_script: <module> arg1 arg2 ..."
+    const scriptMatch = callExpression.match(/^run_script:\s*(\S+)(.*)?$/)
+    let result
+    if (scriptMatch) {
+      const moduleName = scriptMatch[1]
+      const argsStr = (scriptMatch[2] || '').trim()
+      // Find the .py file path in the virtual filesystem
+      const scriptFile = codeFiles.find(f => {
+        const baseName = f.name.split('/').pop()?.replace(/\.py$/, '') || ''
+        return baseName === moduleName || f.name.endsWith(`/${moduleName}.py`)
+      })
+      const scriptPath = scriptFile
+        ? `${SKILLS_DIR}/${scriptFile.name}`
+        : `${SKILLS_DIR}/${moduleName}.py`
+
+      // Parse args respecting quotes
+      const parseArgs = `
+import shlex, sys
+sys.argv = ['${scriptPath}'] + shlex.split(${JSON.stringify(argsStr)})
+`
+      await py.runPythonAsync(parseArgs)
+      result = await py.runPythonAsync(`
+import runpy
+runpy.run_path('${scriptPath}', run_name='__main__')
+`)
+    } else {
+      result = await py.runPythonAsync(callExpression)
+    }
     const output = result !== undefined && result !== null ? String(result) : ''
     return { success: true, output, logs: [...logs] }
   } catch (e: any) {

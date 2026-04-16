@@ -46,16 +46,26 @@ ${skillSections}
 
 # How to Use Tools
 
-When you need to call a tool, use the execute_python function. Provide a Python code snippet to execute.
-All skill .py files are written to the sandbox filesystem as importable modules. You MUST import before calling.
+You have two tools available:
 
+## execute_python
+Use this to call Python functions directly. Provide a Python code snippet to execute.
+All skill .py files are written to the sandbox filesystem as importable modules. You MUST import before calling.
 The call_expression can be multiple lines of Python (use \\n for newlines). Always import first, then call.
 
 Examples:
 - execute_python(call_expression="from main import get_weather\\nget_weather('Tokyo')")
 - execute_python(call_expression="from analyzer import analyze_csv\\nanalyze_csv('data.csv')")
 
-Analyze each skill's description and Python code carefully to understand what modules and functions are available.`
+## run_script
+Use this when the skill code uses argparse or \`if __name__ == '__main__'\`. It runs the script as if invoked from the command line.
+Provide the module name (without .py) and command-line arguments as a string.
+
+Examples:
+- run_script(module="main", args="--city Tokyo --unit celsius")
+- run_script(module="converter", args="input.json --format csv")
+
+Analyze each skill's description and Python code carefully to decide which tool to use.`
 }
 
 function collectAllCodeFiles(skills: Skill[]): { name: string; content: string }[] {
@@ -142,23 +152,46 @@ export async function runAgentLoop(options: AgentLoopOptions) {
   const allCodeFiles = collectAllCodeFiles(skills)
   const conversationMessages = toOpenAIMessages(messages)
 
-  const toolDef: OpenAI.Chat.ChatCompletionTool = {
-    type: 'function',
-    function: {
-      name: 'execute_python',
-      description: 'Execute a Python expression in the sandbox. All skill code is pre-loaded, so you can call any defined function directly.',
-      parameters: {
-        type: 'object',
-        properties: {
-          call_expression: {
-            type: 'string',
-            description: 'The Python expression to evaluate, e.g. get_weather("Tokyo", unit="celsius")'
-          }
-        },
-        required: ['call_expression']
+  const toolDefs: OpenAI.Chat.ChatCompletionTool[] = [
+    {
+      type: 'function',
+      function: {
+        name: 'execute_python',
+        description: 'Execute a Python expression in the sandbox. All skill code is pre-loaded, so you can call any defined function directly.',
+        parameters: {
+          type: 'object',
+          properties: {
+            call_expression: {
+              type: 'string',
+              description: 'The Python expression to evaluate, e.g. get_weather("Tokyo", unit="celsius")'
+            }
+          },
+          required: ['call_expression']
+        }
+      }
+    },
+    {
+      type: 'function',
+      function: {
+        name: 'run_script',
+        description: 'Run a Python script as if invoked from the command line (python script.py args). Use this when the skill code uses argparse or if __name__ == "__main__".',
+        parameters: {
+          type: 'object',
+          properties: {
+            module: {
+              type: 'string',
+              description: 'The Python module/file name to run (without .py extension), e.g. "main"'
+            },
+            args: {
+              type: 'string',
+              description: 'Command-line arguments as a string, e.g. "--city Tokyo --unit celsius"'
+            }
+          },
+          required: ['module']
+        }
       }
     }
-  }
+  ]
 
   let iterationCount = 0
   const maxIterations = 10
@@ -177,7 +210,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
         { role: 'system', content: systemPrompt },
         ...conversationMessages
       ],
-      tools: [toolDef],
+      tools: toolDefs,
       stream: true
     })
 
@@ -277,7 +310,12 @@ export async function runAgentLoop(options: AgentLoopOptions) {
       let callExpression: string
       try {
         const args = JSON.parse(tc.arguments)
-        callExpression = args.call_expression || tc.arguments
+        if (tc.name === 'run_script') {
+          // Convert run_script tool call to the "run_script: module args" format
+          callExpression = `run_script: ${args.module} ${args.args || ''}`.trim()
+        } else {
+          callExpression = args.call_expression || tc.arguments
+        }
       } catch {
         callExpression = tc.arguments
       }
