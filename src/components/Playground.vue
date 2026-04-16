@@ -21,6 +21,7 @@ const loading = ref(false)
 const streamingContent = ref('')
 const sandboxReady = ref(false)
 const abortController = ref<AbortController | null>(null)
+const envVars = ref<Record<string, string>>({})
 
 const sandbox = new PyodideSandbox()
 
@@ -193,6 +194,7 @@ async function handleSend(text: string) {
       skills: skills.value,
       messages: messages.value,
       sandbox,
+      envVars: envVars.value,
       signal: abortController.value.signal,
       onAssistantChunk(chunk) {
         streamingContent.value += chunk
@@ -250,7 +252,7 @@ function clearChat() {
 
 <template>
   <div class="playground">
-    <ConfigPanel @update="onConfigUpdate" />
+    <ConfigPanel @update="onConfigUpdate" @update:env-vars="envVars = $event" />
 
     <div class="main-layout">
       <!-- Left: Skill Manager + Editor -->

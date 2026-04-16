@@ -107,7 +107,8 @@ const SKILLS_DIR = '/home/pyodide/skills'
 
 async function executeCode(
   codeFiles: { name: string; content: string }[],
-  callExpression: string
+  callExpression: string,
+  envVars?: Record<string, string>
 ): Promise<{ success: boolean; output: string; error?: string; logs: string[] }> {
   const py = await initPyodide()
   logs.length = 0
@@ -158,6 +159,17 @@ for _mod_name in list(sys.modules.keys()):
         del sys.modules[_mod_name]
 `
     await py.runPythonAsync(addPathCode)
+
+    // Set environment variables and working directory
+    // Default cwd to the first skill's root directory
+    const skillRoot = codeFiles.length > 0
+      ? `${SKILLS_DIR}/${codeFiles[0].name.split('/')[0]}`
+      : SKILLS_DIR
+    await py.runPythonAsync(`
+import os
+os.chdir(${JSON.stringify(skillRoot)})
+${envVars && Object.keys(envVars).length > 0 ? `os.environ.update(${JSON.stringify(envVars)})` : ''}
+`)
 
     // Execute the command — supports shell-like syntax:
     //   python script.py --arg val   → run script via runpy with sys.argv
@@ -218,7 +230,7 @@ self.onmessage = async (event: MessageEvent) => {
         break
       }
       case 'execute': {
-        const result = await executeCode(payload.codeFiles, payload.callExpression)
+        const result = await executeCode(payload.codeFiles, payload.callExpression, payload.envVars)
         self.postMessage({ id, type: 'result', data: result })
         break
       }

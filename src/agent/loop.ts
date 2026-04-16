@@ -8,6 +8,7 @@ interface AgentLoopOptions {
   skills: Skill[]
   messages: ChatMessage[]
   sandbox: PyodideSandbox
+  envVars?: Record<string, string>
   onAssistantChunk: (chunk: string) => void
   onToolCall: (name: string, args: string) => void
   onToolResult: (name: string, result: string) => void
@@ -143,7 +144,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
   const {
     client, modelId, skills,
     messages, sandbox,
-    onAssistantChunk, onToolCall, onToolResult, onConsole, onDone,
+    onAssistantChunk, onToolCall, onToolResult, onConsole, onDone, envVars,
     signal
   } = options
 
@@ -224,7 +225,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
         onConsole({ type: 'info', message: 'Parsed tool call from text (model did not use function calling)', timestamp: Date.now() })
         onConsole({ type: 'tool', message: `Calling: ${parsed}`, timestamp: Date.now() })
 
-        const result = await sandbox.execute(allCodeFiles, parsed)
+        const result = await sandbox.execute(allCodeFiles, parsed, envVars)
         const resultContent = result.success
           ? result.output || '(no output)'
           : `Error: ${result.error}`
@@ -295,7 +296,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
       onToolCall(tc.name, callExpression)
       onConsole({ type: 'tool', message: `Calling: ${callExpression}`, timestamp: Date.now() })
 
-      const result = await sandbox.execute(allCodeFiles, callExpression)
+      const result = await sandbox.execute(allCodeFiles, callExpression, envVars)
 
       const resultContent = result.success
         ? result.output || '(no output)'

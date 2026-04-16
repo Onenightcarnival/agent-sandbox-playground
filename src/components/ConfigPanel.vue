@@ -1,16 +1,19 @@
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue'
+import { ref, computed, watch, onMounted } from 'vue'
 import type { LLMConfig } from '@/types'
 
 const emit = defineEmits<{
   update: [config: LLMConfig]
+  'update:envVars': [vars: Record<string, string>]
 }>()
 
 const baseUrl = ref('')
 const apiKey = ref('')
 const modelId = ref('')
+const envVars = ref<{ key: string; value: string }[]>([])
 
 const STORAGE_KEY = 'agent-sandbox-config'
+const ENV_STORAGE_KEY = 'agent-sandbox-env'
 
 onMounted(() => {
   try {
@@ -22,16 +25,46 @@ onMounted(() => {
       modelId.value = config.modelId || ''
     }
   } catch {}
+  try {
+    const savedEnv = localStorage.getItem(ENV_STORAGE_KEY)
+    if (savedEnv) {
+      envVars.value = JSON.parse(savedEnv)
+    }
+  } catch {}
   emitConfig()
+  emitEnvVars()
 })
 
 function emitConfig() {
-  const config: LLMConfig = {
+  emit('update', {
     baseUrl: baseUrl.value,
     apiKey: apiKey.value,
     modelId: modelId.value
+  })
+}
+
+const envVarsMap = computed(() => {
+  const vars: Record<string, string> = {
+    OPENAI_BASE_URL: baseUrl.value,
+    OPENAI_API_KEY: apiKey.value,
+    MODEL_ID: modelId.value
   }
-  emit('update', config)
+  for (const { key, value } of envVars.value) {
+    if (key.trim()) vars[key.trim()] = value
+  }
+  return vars
+})
+
+function emitEnvVars() {
+  emit('update:envVars', envVarsMap.value)
+}
+
+function addEnvVar() {
+  envVars.value.push({ key: '', value: '' })
+}
+
+function removeEnvVar(index: number) {
+  envVars.value.splice(index, 1)
 }
 
 watch([baseUrl, apiKey, modelId], () => {
@@ -41,22 +74,42 @@ watch([baseUrl, apiKey, modelId], () => {
     modelId: modelId.value
   }))
   emitConfig()
+  emitEnvVars()
 })
+
+watch(envVars, () => {
+  localStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(envVars.value))
+  emitEnvVars()
+}, { deep: true })
 </script>
 
 <template>
   <div class="config-panel">
-    <div class="config-field">
-      <label>Base URL</label>
-      <input v-model="baseUrl" type="text" placeholder="https://api.openai.com/v1" />
+    <div class="config-row">
+      <div class="config-field">
+        <label>Base URL</label>
+        <input v-model="baseUrl" type="text" placeholder="https://api.openai.com/v1" />
+      </div>
+      <div class="config-field">
+        <label>API Key</label>
+        <input v-model="apiKey" type="password" placeholder="sk-..." />
+      </div>
+      <div class="config-field">
+        <label>Model</label>
+        <input v-model="modelId" type="text" placeholder="gpt-4o" />
+      </div>
     </div>
-    <div class="config-field">
-      <label>API Key</label>
-      <input v-model="apiKey" type="password" placeholder="sk-..." />
-    </div>
-    <div class="config-field">
-      <label>Model</label>
-      <input v-model="modelId" type="text" placeholder="gpt-4o" />
+
+    <div class="env-section">
+      <label class="env-label">Environment Variables</label>
+      <div class="env-list">
+        <div v-for="(env, i) in envVars" :key="i" class="env-row">
+          <input v-model="env.key" type="text" placeholder="KEY" class="env-input env-key-input" />
+          <input v-model="env.value" type="text" placeholder="value" class="env-input env-value-input" />
+          <button class="env-remove" @click="removeEnvVar(i)" title="Remove">&times;</button>
+        </div>
+      </div>
+      <button class="env-add" @click="addEnvVar">+ Add Variable</button>
     </div>
   </div>
 </template>
@@ -64,10 +117,16 @@ watch([baseUrl, apiKey, modelId], () => {
 <style scoped>
 .config-panel {
   display: flex;
-  gap: 12px;
+  flex-direction: column;
+  gap: 8px;
   padding: 12px;
   background: var(--vp-c-bg-soft);
   border-radius: 8px;
+}
+
+.config-row {
+  display: flex;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -97,6 +156,92 @@ watch([baseUrl, apiKey, modelId], () => {
 
 .config-field input:focus {
   outline: none;
+  border-color: var(--vp-c-brand-1);
+}
+
+.env-section {
+  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 8px;
+}
+
+.env-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+}
+
+.env-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.env-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.env-input {
+  padding: 4px 8px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  font-size: 12px;
+  font-family: var(--vp-font-family-mono);
+}
+
+.env-input:focus {
+  outline: none;
+  border-color: var(--vp-c-brand-1);
+}
+
+.env-key-input {
+  width: 160px;
+  flex-shrink: 0;
+}
+
+.env-value-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.env-remove {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.env-remove:hover {
+  background: var(--vp-c-danger-soft);
+  color: var(--vp-c-danger-1);
+}
+
+.env-add {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border: 1px dashed var(--vp-c-divider);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+.env-add:hover {
+  color: var(--vp-c-brand-1);
   border-color: var(--vp-c-brand-1);
 }
 </style>

@@ -60,8 +60,8 @@ export class PyodideSandbox {
     return this.sendMessage('install', { packages })
   }
 
-  async execute(codeFiles: { name: string; content: string }[], callExpression: string): Promise<SandboxResult> {
-    const result = await this.sendMessage('execute', { codeFiles, callExpression })
+  async execute(codeFiles: { name: string; content: string }[], callExpression: string, envVars?: Record<string, string>): Promise<SandboxResult> {
+    const result = await this.sendMessage('execute', { codeFiles, callExpression, envVars })
     return {
       success: result.success,
       output: result.output || '',
