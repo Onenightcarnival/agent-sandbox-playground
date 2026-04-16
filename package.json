@@ -1,0 +1,23 @@
+{
+  "name": "agent-sandbox-playground",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev docs",
+    "build": "vitepress build docs",
+    "preview": "vitepress preview docs"
+  },
+  "dependencies": {
+    "@codemirror/lang-markdown": "^6.5.0",
+    "@codemirror/lang-python": "^6.2.1",
+    "@codemirror/state": "^6.6.0",
+    "@codemirror/theme-one-dark": "^6.1.3",
+    "@codemirror/view": "^6.41.0",
+    "codemirror": "^6.0.2",
+    "jszip": "^3.10.1",
+    "openai": "^6.34.0",
+    "vitepress": "^1.6.4",
+    "vue": "^3.5.32"
+  }
+}
