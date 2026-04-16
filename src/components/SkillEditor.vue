@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { ref, computed, watch } from 'vue'
+import { marked } from 'marked'
 import CodeEditor from './CodeEditor.vue'
 import type { Skill } from '@/types'
 
@@ -43,10 +44,23 @@ const currentFileContent = computed(() => {
   return file?.content || ''
 })
 
+const isMarkdown = computed(() => props.selectedFileName.endsWith('.md'))
+const previewMode = ref(true)
+
+const renderedMarkdown = computed(() => {
+  if (!isMarkdown.value) return ''
+  return marked.parse(currentFileContent.value) as string
+})
+
 const currentLanguage = computed(() => {
   if (props.selectedFileName === 'SKILL.md') return 'markdown' as const
   if (props.selectedFileName === 'requirements.txt') return 'markdown' as const
   return 'python' as const
+})
+
+// Reset to preview mode when switching to a markdown file
+watch(() => props.selectedFileName, () => {
+  if (isMarkdown.value) previewMode.value = true
 })
 
 function onContentChange(content: string) {
@@ -117,10 +131,22 @@ watch(() => props.selectedSkillId, () => {
           >&times;</span>
         </button>
         <button class="add-file-btn" @click="handleAddFile" title="Add Python file">+</button>
+        <button
+          v-if="isMarkdown"
+          class="preview-toggle"
+          :class="{ active: previewMode }"
+          @click="previewMode = !previewMode"
+          :title="previewMode ? 'Edit' : 'Preview'"
+        >
+          {{ previewMode ? 'Edit' : 'Preview' }}
+        </button>
       </div>
 
+      <!-- Markdown preview -->
+      <div v-if="currentSkill && isMarkdown && previewMode" class="markdown-preview" v-html="renderedMarkdown" />
+
       <!-- Editor -->
-      <div v-if="currentSkill" class="editor-wrapper">
+      <div v-else-if="currentSkill" class="editor-wrapper">
         <CodeEditor
           :key="`${selectedSkillId}-${selectedFileName}`"
           :model-value="currentFileContent"
@@ -226,5 +252,113 @@ watch(() => props.selectedSkillId, () => {
 .editor-wrapper {
   flex: 1;
   min-height: 0;
+}
+
+.preview-toggle {
+  margin-left: auto;
+  padding: 4px 10px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vp-c-text-2);
+  font-size: 11px;
+  cursor: pointer;
+  align-self: center;
+  margin-right: 8px;
+}
+
+.preview-toggle:hover {
+  color: var(--vp-c-brand-1);
+  border-color: var(--vp-c-brand-1);
+}
+
+.preview-toggle.active {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  border-color: var(--vp-c-brand-1);
+}
+
+.markdown-preview {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  padding: 16px 20px;
+  font-size: 14px;
+  line-height: 1.6;
+  color: var(--vp-c-text-1);
+}
+
+.markdown-preview :deep(h1),
+.markdown-preview :deep(h2),
+.markdown-preview :deep(h3) {
+  margin-top: 16px;
+  margin-bottom: 8px;
+  font-weight: 600;
+  color: var(--vp-c-text-1);
+}
+
+.markdown-preview :deep(h1) { font-size: 1.4em; }
+.markdown-preview :deep(h2) { font-size: 1.2em; }
+.markdown-preview :deep(h3) { font-size: 1.05em; }
+
+.markdown-preview :deep(p) {
+  margin: 8px 0;
+}
+
+.markdown-preview :deep(code) {
+  background: var(--vp-c-bg-soft);
+  padding: 2px 5px;
+  border-radius: 3px;
+  font-size: 0.9em;
+}
+
+.markdown-preview :deep(pre) {
+  background: var(--vp-c-bg-soft);
+  padding: 12px;
+  border-radius: 6px;
+  overflow-x: auto;
+  margin: 8px 0;
+}
+
+.markdown-preview :deep(pre code) {
+  background: none;
+  padding: 0;
+}
+
+.markdown-preview :deep(ul),
+.markdown-preview :deep(ol) {
+  padding-left: 20px;
+  margin: 8px 0;
+}
+
+.markdown-preview :deep(table) {
+  border-collapse: collapse;
+  width: 100%;
+  margin: 8px 0;
+}
+
+.markdown-preview :deep(th),
+.markdown-preview :deep(td) {
+  border: 1px solid var(--vp-c-divider);
+  padding: 6px 10px;
+  text-align: left;
+}
+
+.markdown-preview :deep(th) {
+  background: var(--vp-c-bg-soft);
+  font-weight: 600;
+}
+
+.markdown-preview :deep(blockquote) {
+  border-left: 3px solid var(--vp-c-brand-1);
+  padding-left: 12px;
+  margin: 8px 0;
+  color: var(--vp-c-text-2);
+}
+
+.markdown-preview :deep(hr) {
+  border: none;
+  border-top: 1px solid var(--vp-c-divider);
+  margin: 16px 0;
 }
 </style>
