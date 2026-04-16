@@ -9,7 +9,6 @@ interface AgentLoopOptions {
   messages: ChatMessage[]
   sandbox: PyodideSandbox
   onAssistantChunk: (chunk: string) => void
-  onAssistantClear: () => void
   onToolCall: (name: string, args: string) => void
   onToolResult: (name: string, result: string) => void
   onConsole: (entry: ConsoleEntry) => void
@@ -46,26 +45,18 @@ ${skillSections}
 
 # How to Use Tools
 
-You have two tools available:
+Use the shell tool to run commands in the sandbox. All skill .py files are pre-loaded in the filesystem.
 
-## execute_python
-Use this to call Python functions directly. Provide a Python code snippet to execute.
-All skill .py files are written to the sandbox filesystem as importable modules. You MUST import before calling.
-The call_expression can be multiple lines of Python (use \\n for newlines). Always import first, then call.
+## Running scripts (argparse / if __name__ == '__main__')
+shell(command="python main.py --city Tokyo --unit celsius")
 
-Examples:
-- execute_python(call_expression="from main import get_weather\\nget_weather('Tokyo')")
-- execute_python(call_expression="from analyzer import analyze_csv\\nanalyze_csv('data.csv')")
+## Running inline Python (quick debugging / function calls)
+shell(command="python -c \\"from main import get_weather; print(get_weather('Tokyo'))\\"")
 
-## run_script
-Use this when the skill code uses argparse or \`if __name__ == '__main__'\`. It runs the script as if invoked from the command line.
-Provide the module name (without .py) and command-line arguments as a string.
+## Multi-line inline Python
+shell(command="python -c \\"import json; from main import analyze; result = analyze('data'); print(json.dumps(result, indent=2))\\"")
 
-Examples:
-- run_script(module="main", args="--city Tokyo --unit celsius")
-- run_script(module="converter", args="input.json --format csv")
-
-Analyze each skill's description and Python code carefully to decide which tool to use.`
+Analyze each skill's description and Python code carefully to understand what modules and functions are available.`
 }
 
 function collectAllCodeFiles(skills: Skill[]): { name: string; content: string }[] {
@@ -114,23 +105,31 @@ function toOpenAIMessages(messages: ChatMessage[]): OpenAI.Chat.ChatCompletionMe
  * Fallback parser for models that output tool calls as text instead of
  * using the structured function calling API.
  * Matches patterns like:
+ *   shell(command="python main.py --arg")
  *   execute_python(call_expression="get_weather('Tokyo')")
- *   ```python\nexecute_python(call_expression='...')\n```
- *   ```\nexecute_python(call_expression="...")\n```
+ *   ```python\nshell(command='...')\n```
+ *   ```bash\npython main.py --arg\n```
  */
 function parseToolCallFromText(text: string): string | null {
-  // Match execute_python(call_expression="...") or execute_python(call_expression='...')
-  const directMatch = text.match(/execute_python\s*\(\s*call_expression\s*=\s*["'`]([\s\S]*?)["'`]\s*\)/)
-  if (directMatch) return directMatch[1]
+  // Match shell(command="...") or shell(command='...')
+  const shellMatch = text.match(/shell\s*\(\s*command\s*=\s*["'`]([\s\S]*?)["'`]\s*\)/)
+  if (shellMatch) return shellMatch[1]
+
+  // Match execute_python(call_expression="...") (legacy)
+  const execMatch = text.match(/execute_python\s*\(\s*call_expression\s*=\s*["'`]([\s\S]*?)["'`]\s*\)/)
+  if (execMatch) return execMatch[1]
 
   // Match inside code blocks
-  const codeBlockMatch = text.match(/```(?:python)?\s*\n?([\s\S]*?)```/)
+  const codeBlockMatch = text.match(/```(?:python|bash|sh)?\s*\n?([\s\S]*?)```/)
   if (codeBlockMatch) {
     const code = codeBlockMatch[1].trim()
-    const innerMatch = code.match(/execute_python\s*\(\s*call_expression\s*=\s*["'`]([\s\S]*?)["'`]\s*\)/)
-    if (innerMatch) return innerMatch[1]
-    // If the code block contains bare Python (not wrapped in execute_python), use it directly
-    if (code && !code.includes('execute_python')) return code
+    // Check for tool call patterns inside code blocks
+    const innerShell = code.match(/shell\s*\(\s*command\s*=\s*["'`]([\s\S]*?)["'`]\s*\)/)
+    if (innerShell) return innerShell[1]
+    const innerExec = code.match(/execute_python\s*\(\s*call_expression\s*=\s*["'`]([\s\S]*?)["'`]\s*\)/)
+    if (innerExec) return innerExec[1]
+    // Bare code in a code block — use it directly
+    if (code && !code.includes('shell(') && !code.includes('execute_python')) return code
   }
 
   return null
@@ -144,7 +143,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
   const {
     client, modelId, skills,
     messages, sandbox,
-    onAssistantChunk, onAssistantClear, onToolCall, onToolResult, onConsole, onDone,
+    onAssistantChunk, onToolCall, onToolResult, onConsole, onDone,
     signal
   } = options
 
@@ -156,38 +155,17 @@ export async function runAgentLoop(options: AgentLoopOptions) {
     {
       type: 'function',
       function: {
-        name: 'execute_python',
-        description: 'Execute a Python expression in the sandbox. All skill code is pre-loaded, so you can call any defined function directly.',
+        name: 'shell',
+        description: 'Run a shell command in the Python sandbox. Use "python script.py args" to run scripts, or "python -c \'code\'" for inline Python.',
         parameters: {
           type: 'object',
           properties: {
-            call_expression: {
+            command: {
               type: 'string',
-              description: 'The Python expression to evaluate, e.g. get_weather("Tokyo", unit="celsius")'
+              description: 'The shell command to execute, e.g. "python main.py --city Tokyo" or "python -c \\"from main import func; print(func())\\"'
             }
           },
-          required: ['call_expression']
-        }
-      }
-    },
-    {
-      type: 'function',
-      function: {
-        name: 'run_script',
-        description: 'Run a Python script as if invoked from the command line (python script.py args). Use this when the skill code uses argparse or if __name__ == "__main__".',
-        parameters: {
-          type: 'object',
-          properties: {
-            module: {
-              type: 'string',
-              description: 'The Python module/file name to run (without .py extension), e.g. "main"'
-            },
-            args: {
-              type: 'string',
-              description: 'Command-line arguments as a string, e.g. "--city Tokyo --unit celsius"'
-            }
-          },
-          required: ['module']
+          required: ['command']
         }
       }
     }
@@ -243,7 +221,6 @@ export async function runAgentLoop(options: AgentLoopOptions) {
     if (toolCalls.size === 0 && assistantContent) {
       const parsed = parseToolCallFromText(assistantContent)
       if (parsed) {
-        onAssistantClear()
         onConsole({ type: 'info', message: 'Parsed tool call from text (model did not use function calling)', timestamp: Date.now() })
         onConsole({ type: 'tool', message: `Calling: ${parsed}`, timestamp: Date.now() })
 
@@ -310,12 +287,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
       let callExpression: string
       try {
         const args = JSON.parse(tc.arguments)
-        if (tc.name === 'run_script') {
-          // Convert run_script tool call to the "run_script: module args" format
-          callExpression = `run_script: ${args.module} ${args.args || ''}`.trim()
-        } else {
-          callExpression = args.call_expression || tc.arguments
-        }
+        callExpression = args.command || args.call_expression || tc.arguments
       } catch {
         callExpression = tc.arguments
       }

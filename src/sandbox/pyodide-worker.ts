@@ -159,33 +159,40 @@ for _mod_name in list(sys.modules.keys()):
 `
     await py.runPythonAsync(addPathCode)
 
-    // Execute the call expression
-    // Detect script-mode: "run_script: <module> arg1 arg2 ..."
-    const scriptMatch = callExpression.match(/^run_script:\s*(\S+)(.*)?$/)
+    // Execute the command — supports shell-like syntax:
+    //   python script.py --arg val   → run script via runpy with sys.argv
+    //   python -c "code"             → run inline Python code
+    //   raw Python expression        → run directly via runPythonAsync (legacy)
+    const pythonScriptMatch = callExpression.match(/^python\s+(\S+\.py)(.*)?$/)
+    const pythonInlineMatch = callExpression.match(/^python\s+-c\s+["'`]([\s\S]*?)["'`]\s*$/)
+
     let result
-    if (scriptMatch) {
-      const moduleName = scriptMatch[1]
-      const argsStr = (scriptMatch[2] || '').trim()
-      // Find the .py file path in the virtual filesystem
-      const scriptFile = codeFiles.find(f => {
-        const baseName = f.name.split('/').pop()?.replace(/\.py$/, '') || ''
-        return baseName === moduleName || f.name.endsWith(`/${moduleName}.py`)
-      })
+    if (pythonInlineMatch) {
+      // python -c "code"
+      result = await py.runPythonAsync(pythonInlineMatch[1])
+    } else if (pythonScriptMatch) {
+      // python script.py --args
+      const scriptArg = pythonScriptMatch[1]
+      const argsStr = (pythonScriptMatch[2] || '').trim()
+
+      // Resolve script path in the virtual filesystem
+      const scriptFile = codeFiles.find(f =>
+        f.name.endsWith(`/${scriptArg}`) || f.name === scriptArg
+      )
       const scriptPath = scriptFile
         ? `${SKILLS_DIR}/${scriptFile.name}`
-        : `${SKILLS_DIR}/${moduleName}.py`
+        : `${SKILLS_DIR}/${scriptArg}`
 
-      // Parse args respecting quotes
-      const parseArgs = `
+      await py.runPythonAsync(`
 import shlex, sys
-sys.argv = ['${scriptPath}'] + shlex.split(${JSON.stringify(argsStr)})
-`
-      await py.runPythonAsync(parseArgs)
+sys.argv = [${JSON.stringify(scriptPath)}] + shlex.split(${JSON.stringify(argsStr)})
+`)
       result = await py.runPythonAsync(`
 import runpy
-runpy.run_path('${scriptPath}', run_name='__main__')
+runpy.run_path(${JSON.stringify(scriptPath)}, run_name='__main__')
 `)
     } else {
+      // Raw Python expression (legacy / fallback)
       result = await py.runPythonAsync(callExpression)
     }
     const output = result !== undefined && result !== null ? String(result) : ''
