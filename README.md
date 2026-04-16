@@ -23,18 +23,25 @@ my-skill/
 
 ## Quick Start
 
-### Development
+1. Copy `.env.example` to `.env` and set your LLM API address:
+
+```bash
+cp .env.example .env
+# edit .env: API_TARGET=http://your-llm-api:8000
+```
+
+2. Development:
 
 ```bash
 npm install
-API_TARGET=http://your-llm-api:8000 npm run dev
+npm run dev
 ```
 
-### Production (internal network)
+3. Production (internal network):
 
 ```bash
 npm run build
-API_TARGET=http://your-llm-api:8000 npm run serve
+npm run serve
 ```
 
 Open the playground, set Base URL to `/api/v1`, fill in API Key and Model.
