@@ -40,21 +40,67 @@ async function initPyodide() {
     }
   })
 
+  // Pre-install pyodide-http to enable requests/httpx in browser
+  await py.loadPackage(['micropip'])
+  await py.runPythonAsync(`
+import micropip
+await micropip.install('pyodide-http')
+import pyodide_http
+pyodide_http.patch_all()
+`)
+  self.postMessage({ type: 'log', level: 'info', message: 'pyodide-http patched (requests/httpx enabled)' })
+
   return pyodide
 }
 
+const installedPackages = new Set<string>()
+
 async function installPackages(packages: string[]) {
   const py = await initPyodide()
-  await py.loadPackage(['micropip'])
-  const micropip = py.globals.get('__import__')('micropip')
   for (const pkg of packages) {
+    if (installedPackages.has(pkg)) continue
     try {
-      await micropip.install(pkg)
+      await py.runPythonAsync(`import micropip; await micropip.install('${pkg}')`)
+      installedPackages.add(pkg)
       self.postMessage({ type: 'log', level: 'info', message: `Installed: ${pkg}` })
     } catch (e: any) {
       self.postMessage({ type: 'log', level: 'error', message: `Failed to install ${pkg}: ${e.message}` })
     }
   }
+}
+
+// Scan Python code for import statements and return package names
+function extractImports(codeFiles: { name: string; content: string }[]): string[] {
+  const imports = new Set<string>()
+  // Modules that are built-in to Python or Pyodide, skip these
+  const builtins = new Set([
+    'sys', 'os', 'json', 're', 'math', 'random', 'datetime', 'time',
+    'collections', 'itertools', 'functools', 'typing', 'pathlib',
+    'io', 'string', 'hashlib', 'base64', 'urllib', 'copy', 'enum',
+    'dataclasses', 'abc', 'contextlib', 'textwrap', 'csv', 'struct',
+    'pyodide', 'pyodide_http', 'micropip', 'js',
+  ])
+
+  for (const file of codeFiles) {
+    for (const line of file.content.split('\n')) {
+      const trimmed = line.trim()
+      // import foo / import foo.bar
+      let m = trimmed.match(/^import\s+([\w]+)/)
+      if (m && !builtins.has(m[1])) imports.add(m[1])
+      // from foo import ... / from foo.bar import ...
+      m = trimmed.match(/^from\s+([\w]+)/)
+      if (m && !builtins.has(m[1])) imports.add(m[1])
+    }
+  }
+
+  // Filter out skill-internal modules (files in the codeFiles)
+  const localModules = new Set(
+    codeFiles.map(f => {
+      const name = f.name.split('/').pop() || ''
+      return name.replace(/\.py$/, '')
+    })
+  )
+  return [...imports].filter(pkg => !localModules.has(pkg))
 }
 
 const SKILLS_DIR = '/home/pyodide/skills'
@@ -83,6 +129,12 @@ async function executeCode(
     // Ensure each directory has __init__.py and is on sys.path
     for (const dir of dirs) {
       try { py.FS.writeFile(`${dir}/__init__.py`, '') } catch {}
+    }
+
+    // Auto-install packages detected from import statements
+    const needed = extractImports(codeFiles)
+    if (needed.length > 0) {
+      await installPackages(needed)
     }
 
     // Add skills dir and each skill subdirectory to sys.path
