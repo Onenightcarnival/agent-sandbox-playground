@@ -61,7 +61,8 @@ export class PyodideSandbox {
   }
 
   async execute(codeFiles: { name: string; content: string }[], callExpression: string, envVars?: Record<string, string>): Promise<SandboxResult> {
-    const result = await this.sendMessage('execute', { codeFiles, callExpression, envVars })
+    // Deep-copy payload to strip Vue reactive proxies — they can't be cloned via postMessage
+    const result = await this.sendMessage('execute', JSON.parse(JSON.stringify({ codeFiles, callExpression, envVars })))
     return {
       success: result.success,
       output: result.output || '',

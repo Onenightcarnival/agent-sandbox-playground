@@ -230,12 +230,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
           ? result.output || '(no output)'
           : `Error: ${result.error}`
 
-        onToolResult('execute_python', resultContent)
-        onConsole({
-          type: result.success ? 'output' : 'error',
-          message: resultContent,
-          timestamp: Date.now()
-        })
+        onToolResult('shell', resultContent)
 
         // Send result back as user message so model can answer naturally
         conversationMessages.push(
@@ -274,6 +269,10 @@ export async function runAgentLoop(options: AgentLoopOptions) {
       timestamp: Date.now()
     }
 
+    // Push assistant message with tool_calls to both conversation and external messages
+    // so that subsequent turns have valid message ordering (assistant+tool_calls before tool results)
+    messages.push(assistantMsg)
+
     conversationMessages.push({
       role: 'assistant',
       content: assistantContent || null,
@@ -303,15 +302,6 @@ export async function runAgentLoop(options: AgentLoopOptions) {
         : `Error: ${result.error}`
 
       onToolResult(tc.name, resultContent)
-      onConsole({
-        type: result.success ? 'output' : 'error',
-        message: resultContent,
-        timestamp: Date.now()
-      })
-
-      for (const log of result.logs) {
-        onConsole({ type: 'info', message: log, timestamp: Date.now() })
-      }
 
       conversationMessages.push({
         role: 'tool',

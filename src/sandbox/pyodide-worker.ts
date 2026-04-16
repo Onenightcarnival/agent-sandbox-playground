@@ -78,6 +78,12 @@ function extractImports(codeFiles: { name: string; content: string }[]): string[
     'collections', 'itertools', 'functools', 'typing', 'pathlib',
     'io', 'string', 'hashlib', 'base64', 'urllib', 'copy', 'enum',
     'dataclasses', 'abc', 'contextlib', 'textwrap', 'csv', 'struct',
+    'argparse', 'shlex', 'runpy', 'subprocess', 'shutil', 'glob',
+    'logging', 'unittest', 'traceback', 'inspect', 'operator',
+    'threading', 'multiprocessing', 'socket', 'http', 'email',
+    'html', 'xml', 'sqlite3', 'decimal', 'fractions', 'statistics',
+    'secrets', 'tempfile', 'zipfile', 'tarfile', 'gzip', 'bz2',
+    'pickle', 'shelve', 'configparser', 'pprint', 'warnings',
     'pyodide', 'pyodide_http', 'micropip', 'js',
   ])
 
@@ -93,13 +99,18 @@ function extractImports(codeFiles: { name: string; content: string }[]): string[
     }
   }
 
-  // Filter out skill-internal modules (files in the codeFiles)
-  const localModules = new Set(
-    codeFiles.map(f => {
-      const name = f.name.split('/').pop() || ''
-      return name.replace(/\.py$/, '')
-    })
-  )
+  // Filter out skill-internal modules (file basenames and directory names)
+  const localModules = new Set<string>()
+  for (const f of codeFiles) {
+    const parts = f.name.split('/')
+    // Add file basename without .py
+    const fileName = parts.pop() || ''
+    localModules.add(fileName.replace(/\.py$/, ''))
+    // Add all directory names in the path (e.g. "scripts" from "skill/scripts/analyzer.py")
+    for (const dir of parts) {
+      localModules.add(dir)
+    }
+  }
   return [...imports].filter(pkg => !localModules.has(pkg))
 }
 
@@ -178,10 +189,9 @@ ${envVars && Object.keys(envVars).length > 0 ? `os.environ.update(${JSON.stringi
     const pythonScriptMatch = callExpression.match(/^python\s+(\S+\.py)(.*)?$/)
     const pythonInlineMatch = callExpression.match(/^python\s+-c\s+["'`]([\s\S]*?)["'`]\s*$/)
 
-    let result
     if (pythonInlineMatch) {
       // python -c "code"
-      result = await py.runPythonAsync(pythonInlineMatch[1])
+      await py.runPythonAsync(pythonInlineMatch[1])
     } else if (pythonScriptMatch) {
       // python script.py --args
       const scriptArg = pythonScriptMatch[1]
@@ -203,12 +213,13 @@ sys.argv = [${JSON.stringify(scriptPath)}] + shlex.split(${JSON.stringify(argsSt
 import runpy
 runpy.run_path(${JSON.stringify(scriptPath)}, run_name='__main__')
 `)
-      result = null
     } else {
       // Raw Python expression (legacy / fallback)
-      result = await py.runPythonAsync(callExpression)
+      await py.runPythonAsync(callExpression)
     }
-    const output = result !== undefined && result !== null ? String(result) : ''
+    // Output is captured via stdout/stderr → logs. Never use runPythonAsync
+    // return values as they may be Pyodide proxy objects that can't be cloned.
+    const output = logs.join('\n')
     return { success: true, output, logs: [...logs] }
   } catch (e: any) {
     return { success: false, output: '', error: e.message, logs: [...logs] }
