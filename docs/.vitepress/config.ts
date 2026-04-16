@@ -19,6 +19,15 @@ export default defineConfig({
     },
     worker: {
       format: 'es'
+    },
+    server: {
+      proxy: {
+        '/api': {
+          target: process.env.API_TARGET || 'http://localhost:8000',
+          changeOrigin: true,
+          rewrite: (p: string) => p.replace(/^\/api/, '')
+        }
+      }
     }
   }
 })

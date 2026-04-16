@@ -23,17 +23,25 @@ my-skill/
 
 ## Quick Start
 
+### Development
+
 ```bash
 npm install
-npm run dev
+API_TARGET=http://your-llm-api:8000 npm run dev
 ```
 
-Open `http://localhost:5173/agent-sandbox-playground/playground` and:
+### Production (internal network)
 
-1. Fill in Base URL, API Key, and Model
-2. Upload a skill `.zip` file (see `examples/test-skill.zip`)
-3. Chat to test your skill
+```bash
+npm run build
+API_TARGET=http://your-llm-api:8000 npm run serve
+```
+
+Open the playground, set Base URL to `/api/v1`, fill in API Key and Model.
+
+The built-in proxy forwards `/api/*` to your LLM API, avoiding CORS issues. No extra dependencies needed.
 
 ## Deployment
 
-Automatically deployed to GitHub Pages via GitHub Actions on push to `main`.
+- **GitHub Pages**: auto-deployed via GitHub Actions on push to `main` (for external demo / public APIs with CORS support)
+- **Internal network**: use `npm run serve` to serve static files + API proxy on one port
