@@ -12,6 +12,8 @@ const apiKey = ref('')
 const modelId = ref('')
 const envVars = ref<{ key: string; value: string }[]>([])
 
+const collapsed = ref(true)
+
 const STORAGE_KEY = 'agent-sandbox-config'
 const ENV_STORAGE_KEY = 'agent-sandbox-env'
 
@@ -59,6 +61,20 @@ function emitEnvVars() {
   emit('update:envVars', envVarsMap.value)
 }
 
+const configSummary = computed(() => {
+  const model = modelId.value || 'No model'
+  const key = apiKey.value
+    ? `sk-...${apiKey.value.slice(-3)}`
+    : 'No key'
+  let domain = 'No URL'
+  try {
+    domain = new URL(baseUrl.value).hostname
+  } catch {}
+  return `${model} · ${key} · ${domain}`
+})
+
+const hasConfig = computed(() => !!(baseUrl.value && apiKey.value && modelId.value))
+
 function addEnvVar() {
   envVars.value.push({ key: '', value: '' })
 }
@@ -84,33 +100,49 @@ watch(envVars, () => {
 </script>
 
 <template>
-  <div class="config-panel">
-    <div class="config-row">
-      <div class="config-field">
-        <label>Base URL</label>
-        <input v-model="baseUrl" type="text" placeholder="https://api.openai.com/v1" />
+  <div class="config-panel" :class="{ collapsed }">
+    <!-- Collapsed summary bar -->
+    <div v-if="collapsed" class="config-summary-bar" @click="collapsed = false">
+      <div class="summary-left">
+        <span class="status-dot" :class="{ active: hasConfig }"></span>
+        <span class="summary-text">{{ configSummary }}</span>
       </div>
-      <div class="config-field">
-        <label>API Key</label>
-        <input v-model="apiKey" type="password" placeholder="sk-..." />
-      </div>
-      <div class="config-field">
-        <label>Model</label>
-        <input v-model="modelId" type="text" placeholder="gpt-4o" />
-      </div>
+      <button class="edit-toggle" @click.stop="collapsed = false">Edit &#x25BE;</button>
     </div>
 
-    <div class="env-section">
-      <label class="env-label">Environment Variables</label>
-      <div class="env-list">
-        <div v-for="(env, i) in envVars" :key="i" class="env-row">
-          <input v-model="env.key" type="text" placeholder="KEY" class="env-input env-key-input" />
-          <input v-model="env.value" type="text" placeholder="value" class="env-input env-value-input" />
-          <button class="env-remove" @click="removeEnvVar(i)" title="Remove">&times;</button>
+    <!-- Expanded form -->
+    <template v-else>
+      <div class="config-header">
+        <span class="config-title">Configuration</span>
+        <button class="collapse-btn" @click="collapsed = true">Collapse &#x25B4;</button>
+      </div>
+      <div class="config-row">
+        <div class="config-field">
+          <label>Base URL</label>
+          <input v-model="baseUrl" type="text" placeholder="https://api.openai.com/v1" />
+        </div>
+        <div class="config-field">
+          <label>API Key</label>
+          <input v-model="apiKey" type="password" placeholder="sk-..." />
+        </div>
+        <div class="config-field">
+          <label>Model</label>
+          <input v-model="modelId" type="text" placeholder="gpt-4o" />
         </div>
       </div>
-      <button class="env-add" @click="addEnvVar">+ Add Variable</button>
-    </div>
+
+      <div class="env-section">
+        <label class="env-label">Environment Variables</label>
+        <div class="env-list">
+          <div v-for="(env, i) in envVars" :key="i" class="env-row">
+            <input v-model="env.key" type="text" placeholder="KEY" class="env-input env-key-input" />
+            <input v-model="env.value" type="text" placeholder="value" class="env-input env-value-input" />
+            <button class="env-remove" @click="removeEnvVar(i)" title="Remove">&times;</button>
+          </div>
+        </div>
+        <button class="env-add" @click="addEnvVar">+ Add Variable</button>
+      </div>
+    </template>
   </div>
 </template>
 
@@ -119,9 +151,87 @@ watch(envVars, () => {
   display: flex;
   flex-direction: column;
   gap: 8px;
-  padding: 12px;
   background: var(--vp-c-bg-soft);
   border-radius: 8px;
+}
+
+.config-panel.collapsed {
+  padding: 0;
+}
+
+.config-panel:not(.collapsed) {
+  padding: 12px;
+}
+
+/* Collapsed summary bar */
+.config-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.config-summary-bar:hover {
+  background: var(--vp-c-bg-alt);
+}
+
+.summary-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vp-c-text-3);
+  flex-shrink: 0;
+}
+
+.status-dot.active {
+  background: #4ade80;
+}
+
+.summary-text {
+  font-size: 12px;
+  color: var(--vp-c-text-2);
+  font-family: var(--vp-font-family-mono);
+}
+
+.edit-toggle {
+  font-size: 11px;
+  color: var(--vp-c-brand-1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+/* Expanded header */
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.config-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+}
+
+.collapse-btn {
+  font-size: 11px;
+  color: var(--vp-c-brand-1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
 }
 
 .config-row {

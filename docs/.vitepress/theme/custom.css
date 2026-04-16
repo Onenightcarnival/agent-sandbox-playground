@@ -1,0 +1,22 @@
+/* Full-width nav bar — align logo and buttons to page edges */
+.VPNavBar .container {
+  max-width: 100% !important;
+  padding: 0 16px !important;
+}
+
+/* Keep top padding for fixed nav, remove horizontal padding */
+.VPContent.has-sidebar,
+.VPContent:not(.has-sidebar) {
+  padding-left: 0 !important;
+  padding-right: 0 !important;
+  padding-bottom: 0 !important;
+}
+
+.VPPage {
+  padding: 0 !important;
+}
+
+/* Remove default VitePress page padding */
+.vp-doc {
+  padding: 0 !important;
+}

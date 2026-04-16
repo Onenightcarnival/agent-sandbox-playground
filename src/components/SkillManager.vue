@@ -175,7 +175,7 @@ function openFilePicker() {
 .upload-zone {
   border: 2px dashed var(--vp-c-divider);
   border-radius: 8px;
-  padding: 16px;
+  padding: 10px;
   text-align: center;
   cursor: pointer;
   transition: all 0.2s;

@@ -8,6 +8,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   clear: []
+  collapse: []
 }>()
 
 const containerRef = ref<HTMLDivElement>()
@@ -28,7 +29,10 @@ function formatTime(ts: number): string {
   <div class="console-panel">
     <div class="console-header">
       <span>Console</span>
-      <button class="clear-btn" @click="$emit('clear')">Clear</button>
+      <div class="console-header-actions">
+        <button class="clear-btn" @click="$emit('clear')">Clear</button>
+        <button class="collapse-btn" @click="$emit('collapse')" title="Collapse">&#x25B6;</button>
+      </div>
     </div>
     <div ref="containerRef" class="console-entries">
       <div v-if="entries.length === 0" class="empty">No output yet</div>
@@ -64,7 +68,13 @@ function formatTime(ts: number): string {
   color: var(--vp-c-text-2);
 }
 
-.clear-btn {
+.console-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.clear-btn, .collapse-btn {
   font-size: 11px;
   padding: 2px 8px;
   border: 1px solid var(--vp-c-divider);
@@ -72,6 +82,10 @@ function formatTime(ts: number): string {
   background: transparent;
   color: var(--vp-c-text-3);
   cursor: pointer;
+}
+
+.clear-btn:hover, .collapse-btn:hover {
+  color: var(--vp-c-text-1);
 }
 
 .console-entries {

@@ -1,6 +1,7 @@
 import DefaultTheme from 'vitepress/theme'
 import type { Theme } from 'vitepress'
 import Playground from '@/components/Playground.vue'
+import './custom.css'
 
 export default {
   extends: DefaultTheme,

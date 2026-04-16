@@ -22,6 +22,8 @@ const streamingContent = ref('')
 const sandboxReady = ref(false)
 const abortController = ref<AbortController | null>(null)
 const envVars = ref<Record<string, string>>({})
+const leftCollapsed = ref(false)
+const rightCollapsed = ref(false)
 
 const sandbox = new PyodideSandbox()
 
@@ -254,9 +256,13 @@ function clearChat() {
   <div class="playground">
     <ConfigPanel @update="onConfigUpdate" @update:env-vars="envVars = $event" />
 
-    <div class="main-layout">
-      <!-- Left: Skill Manager + Editor -->
-      <div class="left-section">
+    <div class="main-layout" :class="{ 'left-collapsed': leftCollapsed, 'right-collapsed': rightCollapsed }">
+      <!-- Left: Skill Manager + Editor (collapsible) -->
+      <div v-if="!leftCollapsed" class="left-panel">
+        <div class="panel-header">
+          <span>Code</span>
+          <button class="panel-toggle" @click="leftCollapsed = true" title="Collapse">&#x25C0;</button>
+        </div>
         <SkillManager
           :skills="skills"
           @add="addSkill"
@@ -276,31 +282,41 @@ function clearChat() {
           />
         </div>
       </div>
+      <div v-else class="collapsed-strip left-strip" @click="leftCollapsed = false">
+        <span class="strip-icon">&#x25B6;</span>
+        <span class="strip-label">Code</span>
+      </div>
 
-      <!-- Right: Chat + Console -->
-      <div class="right-section">
-        <div class="chat-section">
-          <div class="section-header">
-            <span>Chat</span>
-            <div class="header-actions">
-              <span v-if="skills.length > 0" class="skill-count">{{ skills.length }} skill{{ skills.length !== 1 ? 's' : '' }} loaded</span>
-              <button class="clear-btn" @click="clearChat">Clear</button>
-            </div>
+      <!-- Center: Chat (always visible) -->
+      <div class="center-panel">
+        <div class="section-header">
+          <span>Chat</span>
+          <div class="header-actions">
+            <span v-if="skills.length > 0" class="skill-count">{{ skills.length }} skill{{ skills.length !== 1 ? 's' : '' }}</span>
+            <button class="header-btn" @click="clearChat">Clear</button>
           </div>
-          <ChatPanel
-            :messages="messages"
-            :loading="loading"
-            :streaming-content="streamingContent"
-            @send="handleSend"
-            @stop="handleStop"
-          />
         </div>
-        <div class="console-section">
-          <ConsolePanel
-            :entries="consoleEntries"
-            @clear="clearConsole"
-          />
-        </div>
+        <ChatPanel
+          :messages="messages"
+          :loading="loading"
+          :streaming-content="streamingContent"
+          @send="handleSend"
+          @stop="handleStop"
+        />
+      </div>
+
+      <!-- Right: Console (collapsible) -->
+      <div v-if="!rightCollapsed" class="right-panel">
+        <ConsolePanel
+          :entries="consoleEntries"
+          @clear="clearConsole"
+          @collapse="rightCollapsed = true"
+        />
+      </div>
+      <div v-else class="collapsed-strip right-strip" @click="rightCollapsed = false">
+        <span class="strip-icon">&#x25C0;</span>
+        <span class="strip-label">Console</span>
+        <span v-if="consoleEntries.length > 0" class="strip-badge">{{ consoleEntries.length }}</span>
       </div>
     </div>
 
@@ -314,25 +330,66 @@ function clearChat() {
 .playground {
   display: flex;
   flex-direction: column;
-  gap: 12px;
-  padding: 12px 0;
-  height: 85vh;
+  height: calc(100vh - 64px);
+  overflow: hidden;
 }
 
+/* ===== 3-Column Grid ===== */
 .main-layout {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
-  gap: 12px;
+  grid-template-columns: 4fr 4fr 2fr;
   flex: 1;
   min-height: 0;
+  overflow: hidden;
 }
 
-.left-section {
+.main-layout.left-collapsed {
+  grid-template-columns: 36px 4fr 2fr;
+}
+
+.main-layout.right-collapsed {
+  grid-template-columns: 4fr 4fr 36px;
+}
+
+.main-layout.left-collapsed.right-collapsed {
+  grid-template-columns: 36px 1fr 36px;
+}
+
+/* ===== Left Panel ===== */
+.left-panel {
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  min-width: 0;
+  gap: 6px;
   min-height: 0;
+  min-width: 0;
+  border-right: 1px solid var(--vp-c-divider);
+  padding: 0 8px 8px;
+  overflow: hidden;
+}
+
+.panel-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 6px 4px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  flex-shrink: 0;
+}
+
+.panel-toggle {
+  font-size: 10px;
+  padding: 2px 6px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  cursor: pointer;
+}
+
+.panel-toggle:hover {
+  color: var(--vp-c-text-1);
 }
 
 .editor-section {
@@ -341,23 +398,68 @@ function clearChat() {
   border: 1px solid var(--vp-c-divider);
   border-radius: 8px;
   overflow: hidden;
+  background: var(--vp-c-bg-alt);
 }
 
-.right-section {
+/* ===== Collapsed Strips ===== */
+.collapsed-strip {
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  align-items: center;
+  padding-top: 12px;
+  gap: 8px;
+  cursor: pointer;
+  background: var(--vp-c-bg-soft);
+  transition: background 0.15s;
+  user-select: none;
+}
+
+.collapsed-strip:hover {
+  background: var(--vp-c-bg-alt);
+}
+
+.left-strip {
+  border-right: 1px solid var(--vp-c-divider);
+}
+
+.right-strip {
+  border-left: 1px solid var(--vp-c-divider);
+}
+
+.strip-icon {
+  font-size: 10px;
+  color: var(--vp-c-text-3);
+}
+
+.strip-label {
+  writing-mode: vertical-rl;
+  text-orientation: mixed;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+  letter-spacing: 1px;
+}
+
+.strip-badge {
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  font-size: 9px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* ===== Center Panel (Chat) ===== */
+.center-panel {
+  display: flex;
+  flex-direction: column;
   min-height: 0;
-}
-
-.chat-section {
-  flex: 2;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
+  min-width: 0;
   overflow: hidden;
-  min-height: 0;
 }
 
 .section-header {
@@ -366,10 +468,10 @@ function clearChat() {
   align-items: center;
   padding: 6px 12px;
   border-bottom: 1px solid var(--vp-c-divider);
-  background: var(--vp-c-bg-soft);
   font-size: 12px;
   font-weight: 600;
   color: var(--vp-c-text-2);
+  flex-shrink: 0;
 }
 
 .header-actions {
@@ -384,7 +486,7 @@ function clearChat() {
   font-weight: 500;
 }
 
-.section-header .clear-btn {
+.header-btn {
   font-size: 11px;
   padding: 2px 8px;
   border: 1px solid var(--vp-c-divider);
@@ -394,14 +496,18 @@ function clearChat() {
   cursor: pointer;
 }
 
-.console-section {
-  flex: 1;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
-  overflow: hidden;
-  min-height: 0;
+.header-btn:hover {
+  color: var(--vp-c-text-1);
 }
 
+/* ===== Right Panel (Console) ===== */
+.right-panel {
+  border-left: 1px solid var(--vp-c-divider);
+  min-height: 0;
+  overflow: hidden;
+}
+
+/* ===== Misc ===== */
 .sandbox-status {
   text-align: center;
   padding: 8px;
@@ -409,11 +515,24 @@ function clearChat() {
   border-radius: 6px;
   font-size: 13px;
   color: var(--vp-c-warning-1);
+  flex-shrink: 0;
 }
 
 @media (max-width: 768px) {
-  .main-layout {
+  .main-layout,
+  .main-layout.left-collapsed,
+  .main-layout.right-collapsed,
+  .main-layout.left-collapsed.right-collapsed {
     grid-template-columns: 1fr;
+  }
+
+  .collapsed-strip {
+    display: none;
+  }
+
+  .left-panel,
+  .right-panel {
+    border: none;
   }
 }
 </style>

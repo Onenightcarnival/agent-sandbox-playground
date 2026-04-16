@@ -15,12 +15,14 @@ const emit = defineEmits<{
 
 const input = ref('')
 const messagesRef = ref<HTMLDivElement>()
+const textareaRef = ref<HTMLTextAreaElement>()
 
 function handleSend() {
   const text = input.value.trim()
   if (!text || props.loading) return
   emit('send', text)
   input.value = ''
+  resetTextareaHeight()
 }
 
 function handleKeydown(e: KeyboardEvent) {
@@ -28,6 +30,22 @@ function handleKeydown(e: KeyboardEvent) {
     e.preventDefault()
     handleSend()
   }
+}
+
+function autoResize() {
+  const el = textareaRef.value
+  if (!el) return
+  el.style.height = 'auto'
+  const maxHeight = 6 * 22 // 6 lines * ~22px line height
+  el.style.height = Math.min(el.scrollHeight, maxHeight) + 'px'
+}
+
+function resetTextareaHeight() {
+  const el = textareaRef.value
+  if (!el) return
+  nextTick(() => {
+    el.style.height = 'auto'
+  })
 }
 
 watch(() => props.messages.length, async () => {
@@ -74,16 +92,24 @@ watch(() => props.streamingContent, async () => {
         <div class="message-content">{{ streamingContent }}</div>
       </div>
     </div>
-    <div class="input-area">
-      <textarea
-        v-model="input"
-        :disabled="loading"
-        placeholder="Send a message..."
-        rows="2"
-        @keydown="handleKeydown"
-      />
-      <button v-if="loading" class="stop-btn" @click="$emit('stop')">Stop</button>
-      <button v-else class="send-btn" :disabled="!input.trim()" @click="handleSend">Send</button>
+    <div class="input-container">
+      <div class="input-box" :class="{ focused: false }">
+        <textarea
+          ref="textareaRef"
+          v-model="input"
+          :disabled="loading"
+          placeholder="Send a message..."
+          rows="1"
+          @keydown="handleKeydown"
+          @input="autoResize"
+        />
+        <button v-if="loading" class="stop-btn" @click="$emit('stop')">Stop</button>
+        <button v-else class="send-icon-btn" :disabled="!input.trim()" @click="handleSend">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M22 2L11 13" /><path d="M22 2L15 22L11 13L2 9L22 2Z" />
+          </svg>
+        </button>
+      </div>
     </div>
   </div>
 </template>
@@ -159,51 +185,78 @@ watch(() => props.streamingContent, async () => {
   display: inline-block;
 }
 
-.input-area {
-  display: flex;
-  gap: 8px;
-  padding: 12px;
-  border-top: 1px solid var(--vp-c-divider);
+.input-container {
+  padding: 12px 16px 16px;
 }
 
-.input-area textarea {
-  flex: 1;
-  padding: 8px 12px;
+.input-box {
+  display: flex;
+  align-items: flex-end;
+  gap: 8px;
+  background: var(--vp-c-bg-soft);
   border: 1px solid var(--vp-c-divider);
-  border-radius: 8px;
-  background: var(--vp-c-bg);
+  border-radius: 16px;
+  padding: 10px 12px 10px 16px;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.15);
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+
+.input-box:focus-within {
+  border-color: var(--vp-c-brand-1);
+  box-shadow: 0 2px 16px rgba(0, 0, 0, 0.25);
+}
+
+.input-box textarea {
+  flex: 1;
+  padding: 2px 0;
+  border: none;
+  background: transparent;
   color: var(--vp-c-text-1);
   font-size: 14px;
+  line-height: 22px;
   resize: none;
   font-family: inherit;
+  max-height: 132px;
+  overflow-y: auto;
 }
 
-.input-area textarea:focus {
+.input-box textarea:focus {
   outline: none;
-  border-color: var(--vp-c-brand-1);
 }
 
-.send-btn, .stop-btn {
-  padding: 8px 16px;
+.send-icon-btn {
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
   border: none;
-  border-radius: 8px;
-  font-weight: 600;
-  cursor: pointer;
-  font-size: 13px;
-}
-
-.send-btn {
   background: var(--vp-c-brand-1);
   color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+  transition: opacity 0.15s;
 }
 
-.send-btn:disabled {
-  opacity: 0.5;
+.send-icon-btn:disabled {
+  opacity: 0.35;
   cursor: not-allowed;
 }
 
+.send-icon-btn:not(:disabled):hover {
+  opacity: 0.85;
+}
+
 .stop-btn {
+  padding: 6px 14px;
+  border: none;
+  border-radius: 16px;
+  font-weight: 600;
+  cursor: pointer;
+  font-size: 12px;
   background: var(--vp-c-danger-1);
   color: white;
+  flex-shrink: 0;
 }
 </style>

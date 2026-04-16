@@ -12,8 +12,10 @@ export default defineConfig({
   base: '/agent-sandbox-playground/',
   themeConfig: {
     nav: [
-      { text: 'Home', link: '/' },
       { text: 'Playground', link: '/playground' }
+    ],
+    socialLinks: [
+      { icon: 'github', link: 'https://github.com/Onenightcarnival/agent-sandbox-playground' }
     ]
   },
   vite: {
