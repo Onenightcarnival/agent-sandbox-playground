@@ -197,6 +197,9 @@ async function handleSend(text: string) {
       onAssistantChunk(chunk) {
         streamingContent.value += chunk
       },
+      onAssistantClear() {
+        streamingContent.value = ''
+      },
       onToolCall(name, args) {
         consoleEntries.value.push({
           type: 'tool',

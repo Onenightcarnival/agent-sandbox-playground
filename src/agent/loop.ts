@@ -9,6 +9,7 @@ interface AgentLoopOptions {
   messages: ChatMessage[]
   sandbox: PyodideSandbox
   onAssistantChunk: (chunk: string) => void
+  onAssistantClear: () => void
   onToolCall: (name: string, args: string) => void
   onToolResult: (name: string, result: string) => void
   onConsole: (entry: ConsoleEntry) => void
@@ -133,7 +134,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
   const {
     client, modelId, skills,
     messages, sandbox,
-    onAssistantChunk, onToolCall, onToolResult, onConsole, onDone,
+    onAssistantChunk, onAssistantClear, onToolCall, onToolResult, onConsole, onDone,
     signal
   } = options
 
@@ -209,6 +210,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
     if (toolCalls.size === 0 && assistantContent) {
       const parsed = parseToolCallFromText(assistantContent)
       if (parsed) {
+        onAssistantClear()
         onConsole({ type: 'info', message: 'Parsed tool call from text (model did not use function calling)', timestamp: Date.now() })
         onConsole({ type: 'tool', message: `Calling: ${parsed}`, timestamp: Date.now() })
 
