@@ -199,10 +199,11 @@ ${envVars && Object.keys(envVars).length > 0 ? `os.environ.update(${JSON.stringi
 import shlex, sys
 sys.argv = [${JSON.stringify(scriptPath)}] + shlex.split(${JSON.stringify(argsStr)})
 `)
-      result = await py.runPythonAsync(`
+      await py.runPythonAsync(`
 import runpy
 runpy.run_path(${JSON.stringify(scriptPath)}, run_name='__main__')
 `)
+      result = null
     } else {
       // Raw Python expression (legacy / fallback)
       result = await py.runPythonAsync(callExpression)
