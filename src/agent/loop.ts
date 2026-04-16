@@ -99,6 +99,32 @@ function toOpenAIMessages(messages: ChatMessage[]): OpenAI.Chat.ChatCompletionMe
     })
 }
 
+/**
+ * Fallback parser for models that output tool calls as text instead of
+ * using the structured function calling API.
+ * Matches patterns like:
+ *   execute_python(call_expression="get_weather('Tokyo')")
+ *   ```python\nexecute_python(call_expression='...')\n```
+ *   ```\nexecute_python(call_expression="...")\n```
+ */
+function parseToolCallFromText(text: string): string | null {
+  // Match execute_python(call_expression="...") or execute_python(call_expression='...')
+  const directMatch = text.match(/execute_python\s*\(\s*call_expression\s*=\s*["'`]([\s\S]*?)["'`]\s*\)/)
+  if (directMatch) return directMatch[1]
+
+  // Match inside code blocks
+  const codeBlockMatch = text.match(/```(?:python)?\s*\n?([\s\S]*?)```/)
+  if (codeBlockMatch) {
+    const code = codeBlockMatch[1].trim()
+    const innerMatch = code.match(/execute_python\s*\(\s*call_expression\s*=\s*["'`]([\s\S]*?)["'`]\s*\)/)
+    if (innerMatch) return innerMatch[1]
+    // If the code block contains bare Python (not wrapped in execute_python), use it directly
+    if (code && !code.includes('execute_python')) return code
+  }
+
+  return null
+}
+
 function generateId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
@@ -176,6 +202,41 @@ export async function runAgentLoop(options: AgentLoopOptions) {
           if (tc.function?.arguments) existing.arguments += tc.function.arguments
           toolCalls.set(tc.index, existing)
         }
+      }
+    }
+
+    // Fallback: parse tool calls from text when model doesn't support function calling
+    if (toolCalls.size === 0 && assistantContent) {
+      const parsed = parseToolCallFromText(assistantContent)
+      if (parsed) {
+        onConsole({ type: 'info', message: 'Parsed tool call from text (model did not use function calling)', timestamp: Date.now() })
+        onConsole({ type: 'tool', message: `Calling: ${parsed}`, timestamp: Date.now() })
+
+        const result = await sandbox.execute(allCodeFiles, parsed)
+        const resultContent = result.success
+          ? result.output || '(no output)'
+          : `Error: ${result.error}`
+
+        onToolResult('execute_python', resultContent)
+        onConsole({
+          type: result.success ? 'output' : 'error',
+          message: resultContent,
+          timestamp: Date.now()
+        })
+
+        // Send result back as user message so model can answer naturally
+        conversationMessages.push(
+          { role: 'assistant', content: assistantContent },
+          { role: 'user', content: `Tool execution result:\n${resultContent}\n\nPlease respond to the user based on this result.` }
+        )
+        messages.push({
+          id: generateId(),
+          role: 'tool',
+          content: resultContent,
+          timestamp: Date.now()
+        })
+
+        continue // next iteration, model will see the result and answer
       }
     }
 
