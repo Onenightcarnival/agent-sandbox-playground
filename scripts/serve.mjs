@@ -1,5 +1,5 @@
 /**
- * Production server: serves VitePress static build + proxies /api/* to LLM API.
+ * Production server: serves Vite static build + proxies /api/* to LLM API.
  * Zero extra dependencies — uses Node.js built-in modules only.
  *
  * Usage:
@@ -32,7 +32,7 @@ if (fs.existsSync(envFile)) {
 
 const PORT = parseInt(process.env.PORT || '3000')
 const API_TARGET = (process.env.API_TARGET || '').replace(/\/+$/, '')
-const DIST = path.resolve(ROOT, 'docs/.vitepress/dist')
+const DIST = path.resolve(ROOT, 'dist')
 
 if (!API_TARGET) {
   console.error('Usage: API_TARGET=http://your-llm-api:8000 node scripts/serve.mjs')

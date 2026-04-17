@@ -1,0 +1,205 @@
+.config-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  background: var(--vp-c-bg-soft);
+  border-radius: 8px;
+}
+
+.config-panel.collapsed {
+  padding: 0;
+}
+
+.config-panel:not(.collapsed) {
+  padding: 12px;
+}
+
+.config-summary-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  cursor: pointer;
+  border-radius: 8px;
+  transition: background 0.15s;
+}
+
+.config-summary-bar:hover {
+  background: var(--vp-c-bg-alt);
+}
+
+.summary-left {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.status-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--vp-c-text-3);
+  flex-shrink: 0;
+}
+
+.status-dot.active {
+  background: #4ade80;
+}
+
+.summary-text {
+  font-size: 12px;
+  color: var(--vp-c-text-2);
+  font-family: var(--vp-font-family-mono);
+}
+
+.edit-toggle {
+  font-size: 11px;
+  color: var(--vp-c-brand-1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.config-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 4px;
+}
+
+.config-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+}
+
+.collapse-btn {
+  font-size: 11px;
+  color: var(--vp-c-brand-1);
+  background: none;
+  border: none;
+  cursor: pointer;
+  padding: 2px 6px;
+}
+
+.config-row {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.config-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  min-width: 180px;
+}
+
+.config-field label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+}
+
+.config-field input {
+  padding: 6px 10px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  font-size: 13px;
+  font-family: var(--vp-font-family-mono);
+}
+
+.config-field input:focus {
+  outline: none;
+  border-color: var(--vp-c-brand-1);
+}
+
+.env-section {
+  border-top: 1px solid var(--vp-c-divider);
+  padding-top: 8px;
+}
+
+.env-label {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+}
+
+.env-list {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 6px;
+}
+
+.env-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.env-input {
+  padding: 4px 8px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 4px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+  font-size: 12px;
+  font-family: var(--vp-font-family-mono);
+}
+
+.env-input:focus {
+  outline: none;
+  border-color: var(--vp-c-brand-1);
+}
+
+.env-key-input {
+  width: 160px;
+  flex-shrink: 0;
+}
+
+.env-value-input {
+  flex: 1;
+  min-width: 0;
+}
+
+.env-remove {
+  width: 22px;
+  height: 22px;
+  border: none;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.env-remove:hover {
+  background: var(--vp-c-danger-soft);
+  color: var(--vp-c-danger-1);
+}
+
+.env-add {
+  align-self: flex-start;
+  padding: 3px 10px;
+  border: 1px dashed var(--vp-c-divider);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  font-size: 11px;
+  cursor: pointer;
+  margin-top: 2px;
+}
+
+.env-add:hover {
+  color: var(--vp-c-brand-1);
+  border-color: var(--vp-c-brand-1);
+}

@@ -1,4 +1,6 @@
-declare const self: DedicatedWorkerGlobalScope
+// This module runs in a Web Worker. Cast the global `self` to the worker scope
+// so the DOM `self: Window` typing from the shared lib doesn't apply here.
+const workerSelf = self as unknown as DedicatedWorkerGlobalScope
 
 interface PyodideInterface {
   runPythonAsync(code: string): Promise<any>
@@ -29,14 +31,14 @@ async function initPyodide() {
   pyodide.setStdout({
     batched: (msg: string) => {
       logs.push(msg)
-      self.postMessage({ type: 'log', level: 'info', message: msg })
+      workerSelf.postMessage({ type: 'log', level: 'info', message: msg })
     }
   })
 
   pyodide.setStderr({
     batched: (msg: string) => {
       logs.push(`[stderr] ${msg}`)
-      self.postMessage({ type: 'log', level: 'error', message: msg })
+      workerSelf.postMessage({ type: 'log', level: 'error', message: msg })
     }
   })
 
@@ -48,7 +50,7 @@ await micropip.install('pyodide-http')
 import pyodide_http
 pyodide_http.patch_all()
 `)
-  self.postMessage({ type: 'log', level: 'info', message: 'pyodide-http patched (requests/httpx enabled)' })
+  workerSelf.postMessage({ type: 'log', level: 'info', message: 'pyodide-http patched (requests/httpx enabled)' })
 
   return pyodide
 }
@@ -62,9 +64,9 @@ async function installPackages(packages: string[]) {
     try {
       await py.runPythonAsync(`import micropip; await micropip.install('${pkg}')`)
       installedPackages.add(pkg)
-      self.postMessage({ type: 'log', level: 'info', message: `Installed: ${pkg}` })
+      workerSelf.postMessage({ type: 'log', level: 'info', message: `Installed: ${pkg}` })
     } catch (e: any) {
-      self.postMessage({ type: 'log', level: 'error', message: `Failed to install ${pkg}: ${e.message}` })
+      workerSelf.postMessage({ type: 'log', level: 'error', message: `Failed to install ${pkg}: ${e.message}` })
     }
   }
 }
@@ -140,7 +142,7 @@ async function executeCode(
       }
       py.FS.mkdirTree(dirPath)
       py.FS.writeFile(`${dirPath}/${fileName}`, file.content)
-      self.postMessage({ type: 'log', level: 'info', message: `Wrote ${dirPath}/${fileName}` })
+      workerSelf.postMessage({ type: 'log', level: 'info', message: `Wrote ${dirPath}/${fileName}` })
     }
 
     // Ensure each directory has __init__.py so subpackages are importable
@@ -226,30 +228,30 @@ runpy.run_path(${JSON.stringify(scriptPath)}, run_name='__main__')
   }
 }
 
-self.onmessage = async (event: MessageEvent) => {
+workerSelf.onmessage = async (event: MessageEvent) => {
   const { id, action, payload } = event.data
 
   try {
     switch (action) {
       case 'init': {
         await initPyodide()
-        self.postMessage({ id, type: 'result', data: { success: true } })
+        workerSelf.postMessage({ id, type: 'result', data: { success: true } })
         break
       }
       case 'install': {
         await installPackages(payload.packages)
-        self.postMessage({ id, type: 'result', data: { success: true } })
+        workerSelf.postMessage({ id, type: 'result', data: { success: true } })
         break
       }
       case 'execute': {
         const result = await executeCode(payload.codeFiles, payload.callExpression, payload.envVars)
-        self.postMessage({ id, type: 'result', data: result })
+        workerSelf.postMessage({ id, type: 'result', data: result })
         break
       }
       default:
-        self.postMessage({ id, type: 'result', data: { success: false, error: `Unknown action: ${action}` } })
+        workerSelf.postMessage({ id, type: 'result', data: { success: false, error: `Unknown action: ${action}` } })
     }
   } catch (e: any) {
-    self.postMessage({ id, type: 'result', data: { success: false, error: e.message } })
+    workerSelf.postMessage({ id, type: 'result', data: { success: false, error: e.message } })
   }
 }

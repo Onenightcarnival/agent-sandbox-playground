@@ -48,6 +48,13 @@ Open the playground, set Base URL to `/api/v1`, fill in API Key and Model.
 
 The built-in proxy forwards `/api/*` to your LLM API, avoiding CORS issues. No extra dependencies needed.
 
+## Tech Stack
+
+- Vite + React 18 (TypeScript)
+- Pyodide in a Web Worker for in-browser Python
+- CodeMirror 6 for code editing
+- OpenAI JS SDK (browser mode)
+
 ## Deployment
 
 - **GitHub Pages**: auto-deployed via GitHub Actions on push to `main` (for external demo / public APIs with CORS support)

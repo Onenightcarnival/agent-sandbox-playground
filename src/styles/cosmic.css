@@ -1,0 +1,204 @@
+/* ===== Font stack ===== */
+:root {
+  --vp-font-family-base: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
+  --vp-font-family-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono', 'Courier New', monospace;
+  color-scheme: dark;
+}
+
+html, body {
+  margin: 0;
+  padding: 0;
+  height: 100%;
+  font-family: var(--vp-font-family-base);
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-1);
+}
+
+#root {
+  height: 100%;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+/* ===== Night theme (default) ===== */
+.dark {
+  --vp-c-bg: #0a0a0f;
+  --vp-c-bg-alt: #0d0d14;
+  --vp-c-bg-elv: #12121a;
+  --vp-c-bg-soft: #14141e;
+
+  --vp-c-brand-1: #8b9cf7;
+  --vp-c-brand-2: #7b8de7;
+  --vp-c-brand-3: #6b7dd7;
+  --vp-c-brand-soft: rgba(139, 156, 247, 0.12);
+
+  --vp-c-text-1: rgba(235, 235, 245, 0.86);
+  --vp-c-text-2: rgba(235, 235, 245, 0.5);
+  --vp-c-text-3: rgba(235, 235, 245, 0.3);
+
+  --vp-c-border: rgba(139, 156, 247, 0.12);
+  --vp-c-divider: rgba(139, 156, 247, 0.08);
+  --vp-c-gutter: #000000;
+
+  --vp-nav-bg-color: rgba(10, 10, 15, 0.8);
+
+  --vp-c-default-soft: rgba(235, 235, 245, 0.08);
+
+  --cosmic-glow: rgba(139, 156, 247, 0.08);
+  --cosmic-glow-soft: rgba(139, 156, 247, 0.02);
+  --cosmic-accent-rgb: 139, 156, 247;
+
+  --vp-c-danger-1: #f87171;
+  --vp-c-danger-soft: rgba(248, 113, 113, 0.12);
+
+  --vp-c-warning-1: #fbbf24;
+  --vp-c-warning-soft: rgba(251, 191, 36, 0.12);
+
+  transition: background-color 0.4s ease, color 0.3s ease;
+}
+
+/* ===== Dusk theme (warm light) ===== */
+.dark.dusk {
+  color-scheme: light;
+
+  --vp-c-bg: #faf6f0;
+  --vp-c-bg-alt: #f5efe6;
+  --vp-c-bg-elv: #ffffff;
+  --vp-c-bg-soft: #f0e9de;
+
+  --vp-c-brand-1: #c8860a;
+  --vp-c-brand-2: #b5780a;
+  --vp-c-brand-3: #a06a08;
+  --vp-c-brand-soft: rgba(200, 134, 10, 0.10);
+
+  --vp-c-text-1: #3d3428;
+  --vp-c-text-2: #7a6e5d;
+  --vp-c-text-3: #a89e8e;
+
+  --vp-c-border: rgba(180, 160, 130, 0.25);
+  --vp-c-divider: rgba(180, 160, 130, 0.15);
+  --vp-c-gutter: #ede7dc;
+
+  --vp-nav-bg-color: rgba(250, 246, 240, 0.85);
+
+  --vp-c-default-soft: rgba(60, 52, 40, 0.06);
+
+  --cosmic-glow: rgba(200, 134, 10, 0.06);
+  --cosmic-glow-soft: rgba(200, 134, 10, 0.02);
+  --cosmic-accent-rgb: 200, 134, 10;
+
+  --vp-c-danger-1: #dc2626;
+  --vp-c-danger-soft: rgba(220, 38, 38, 0.10);
+
+  --vp-c-warning-1: #d97706;
+  --vp-c-warning-soft: rgba(217, 119, 6, 0.10);
+}
+
+/* ===== App shell ===== */
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+}
+
+.app-navbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 56px;
+  padding: 0 16px;
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  background: var(--vp-nav-bg-color);
+  border-bottom: 1px solid rgba(var(--cosmic-accent-rgb), 0.06);
+  flex-shrink: 0;
+  position: relative;
+  z-index: 20;
+}
+
+.app-navbar .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-weight: 700;
+  font-size: 15px;
+  color: var(--vp-c-text-1);
+  letter-spacing: 0.2px;
+}
+
+.app-navbar .brand-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--vp-c-brand-1);
+  box-shadow: 0 0 10px rgba(var(--cosmic-accent-rgb), 0.5);
+}
+
+.app-navbar .nav-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-navbar a.github-link {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  color: var(--vp-c-text-2);
+  transition: color 0.15s;
+}
+
+.app-navbar a.github-link:hover {
+  color: var(--vp-c-brand-1);
+  text-shadow: 0 0 12px rgba(var(--cosmic-accent-rgb), 0.3);
+}
+
+.app-content {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  position: relative;
+  z-index: 1;
+}
+
+/* ===== Scrollbar ===== */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(var(--cosmic-accent-rgb), 0.2);
+  border-radius: 3px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(var(--cosmic-accent-rgb), 0.35);
+}
+
+html {
+  scroll-behavior: smooth;
+}
+
+::selection {
+  background: rgba(var(--cosmic-accent-rgb), 0.3);
+  color: #fff;
+}
+
+/* Reset button default */
+button {
+  font-family: inherit;
+}
+
+input, textarea, select {
+  font-family: inherit;
+}
