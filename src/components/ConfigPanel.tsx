@@ -1,5 +1,5 @@
 import { useState, useEffect, useMemo } from 'react'
-import type { LLMConfig } from '@/types'
+import type { LLMConfig, ToolMode } from '@/types'
 import './ConfigPanel.css'
 
 interface Props {
@@ -19,6 +19,7 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [modelId, setModelId] = useState('')
+  const [toolMode, setToolMode] = useState<ToolMode>('function_call')
   const [envVars, setEnvVars] = useState<EnvVar[]>([])
   const [collapsed, setCollapsed] = useState(true)
   const [hydrated, setHydrated] = useState(false)
@@ -31,6 +32,9 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
         setBaseUrl(config.baseUrl || '')
         setApiKey(config.apiKey || '')
         setModelId(config.modelId || '')
+        if (config.toolMode === 'function_call' || config.toolMode === 'prompt') {
+          setToolMode(config.toolMode)
+        }
       }
     } catch {}
     try {
@@ -54,9 +58,9 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
 
   useEffect(() => {
     if (!hydrated) return
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ baseUrl, apiKey, modelId }))
-    onConfigChange({ baseUrl, apiKey, modelId })
-  }, [baseUrl, apiKey, modelId, hydrated, onConfigChange])
+    localStorage.setItem(STORAGE_KEY, JSON.stringify({ baseUrl, apiKey, modelId, toolMode }))
+    onConfigChange({ baseUrl, apiKey, modelId, toolMode })
+  }, [baseUrl, apiKey, modelId, toolMode, hydrated, onConfigChange])
 
   useEffect(() => {
     if (!hydrated) return
@@ -77,8 +81,9 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
     try {
       domain = new URL(baseUrl).hostname
     } catch {}
-    return `${model} · ${key} · ${domain}`
-  }, [baseUrl, apiKey, modelId])
+    const modeLabel = toolMode === 'function_call' ? 'FnCall' : 'Prompt'
+    return `${model} · ${key} · ${domain} · ${modeLabel}`
+  }, [baseUrl, apiKey, modelId, toolMode])
 
   const addEnvVar = () => setEnvVars(prev => [...prev, { key: '', value: '' }])
   const removeEnvVar = (index: number) =>
@@ -116,6 +121,36 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
             <div className="config-field">
               <label>Model</label>
               <input value={modelId} onChange={e => setModelId(e.target.value)} type="text" placeholder="gpt-4o" />
+            </div>
+          </div>
+
+          <div className="config-row tool-mode-row">
+            <div className="config-field tool-mode-field">
+              <label title="Pick the tool-invocation protocol your model/endpoint supports. No automatic fallback.">
+                Tool Invocation
+              </label>
+              <div className="tool-mode-toggle" role="radiogroup" aria-label="Tool invocation mode">
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={toolMode === 'function_call'}
+                  className={`tool-mode-option ${toolMode === 'function_call' ? 'active' : ''}`}
+                  onClick={() => setToolMode('function_call')}
+                >
+                  Function Call
+                  <span className="tool-mode-hint">Uses OpenAI <code>tools</code> API</span>
+                </button>
+                <button
+                  type="button"
+                  role="radio"
+                  aria-checked={toolMode === 'prompt'}
+                  className={`tool-mode-option ${toolMode === 'prompt' ? 'active' : ''}`}
+                  onClick={() => setToolMode('prompt')}
+                >
+                  Prompt
+                  <span className="tool-mode-hint">Parse <code>shell(command=...)</code> from text</span>
+                </button>
+              </div>
             </div>
           </div>
 

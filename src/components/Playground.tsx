@@ -11,7 +11,7 @@ import type { LLMConfig, ChatMessage, ConsoleEntry, Skill } from '@/types'
 import './Playground.css'
 
 export default function Playground() {
-  const [config, setConfig] = useState<LLMConfig>({ baseUrl: '', apiKey: '', modelId: '' })
+  const [config, setConfig] = useState<LLMConfig>({ baseUrl: '', apiKey: '', modelId: '', toolMode: 'function_call' })
   const [skills, setSkills] = useState<Skill[]>([])
   const [selectedSkillId, setSelectedSkillId] = useState('')
   const [selectedFileName, setSelectedFileName] = useState('SKILL.md')
@@ -169,6 +169,7 @@ export default function Playground() {
       await runAgentLoop({
         client,
         modelId: config.modelId,
+        toolMode: config.toolMode,
         skills,
         messages: workingMessages,
         sandbox: sandboxRef.current,

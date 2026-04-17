@@ -1,7 +1,22 @@
+export type ToolMode = 'function_call' | 'prompt'
+
 export interface LLMConfig {
   baseUrl: string
   apiKey: string
   modelId: string
+  toolMode: ToolMode
+}
+
+export interface SkillValidationIssue {
+  level: 'error' | 'warning'
+  message: string
+}
+
+export interface SkillValidationResult {
+  skill: Skill | null
+  errors: SkillValidationIssue[]
+  warnings: SkillValidationIssue[]
+  fileName: string
 }
 
 export interface ChatMessage {

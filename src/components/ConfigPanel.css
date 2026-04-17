@@ -118,6 +118,61 @@
   border-color: var(--vp-c-brand-1);
 }
 
+.tool-mode-row {
+  margin-top: 4px;
+}
+
+.tool-mode-field {
+  flex: 1;
+  min-width: 100%;
+}
+
+.tool-mode-toggle {
+  display: flex;
+  gap: 6px;
+}
+
+.tool-mode-option {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 8px 12px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 6px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-2);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: border-color 0.15s, color 0.15s, background 0.15s;
+}
+
+.tool-mode-option:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-text-1);
+}
+
+.tool-mode-option.active {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft, rgba(100, 108, 255, 0.1));
+}
+
+.tool-mode-hint {
+  font-size: 11px;
+  font-weight: 400;
+  color: var(--vp-c-text-3);
+  font-family: var(--vp-font-family-mono);
+}
+
+.tool-mode-option code {
+  background: transparent;
+  padding: 0;
+  font-size: inherit;
+}
+
 .env-section {
   border-top: 1px solid var(--vp-c-divider);
   padding-top: 8px;

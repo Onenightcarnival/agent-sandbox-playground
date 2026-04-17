@@ -108,3 +108,128 @@
   color: var(--vp-c-text-3);
   font-size: 13px;
 }
+
+.validation-panel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 8px;
+  padding: 10px 12px;
+  background: var(--vp-c-bg-soft);
+}
+
+.validation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--vp-c-text-2);
+}
+
+.validation-dismiss {
+  width: 20px;
+  height: 20px;
+  border: none;
+  background: transparent;
+  color: var(--vp-c-text-3);
+  font-size: 16px;
+  cursor: pointer;
+  border-radius: 4px;
+  line-height: 1;
+}
+
+.validation-dismiss:hover {
+  background: var(--vp-c-bg-alt);
+  color: var(--vp-c-text-1);
+}
+
+.validation-result {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 4px;
+  border-top: 1px dashed var(--vp-c-divider);
+}
+
+.validation-result:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.validation-filename {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.validation-status {
+  font-weight: 600;
+  padding: 1px 6px;
+  border-radius: 3px;
+  font-size: 11px;
+}
+
+.validation-status.failed {
+  color: var(--vp-c-danger-1, #e5484d);
+  background: var(--vp-c-danger-soft, rgba(229, 72, 77, 0.1));
+}
+
+.validation-status.accepted {
+  color: #eab308;
+  background: rgba(234, 179, 8, 0.12);
+}
+
+.validation-file {
+  font-family: var(--vp-font-family-mono);
+  color: var(--vp-c-text-2);
+  font-size: 11px;
+}
+
+.validation-issue {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.validation-issue.error {
+  background: var(--vp-c-danger-soft, rgba(229, 72, 77, 0.08));
+  color: var(--vp-c-text-1);
+}
+
+.validation-issue.warning {
+  background: rgba(234, 179, 8, 0.08);
+  color: var(--vp-c-text-1);
+}
+
+.issue-label {
+  flex-shrink: 0;
+  font-family: var(--vp-font-family-mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  font-weight: 600;
+  padding: 1px 5px;
+  border-radius: 3px;
+  line-height: 1.4;
+}
+
+.validation-issue.error .issue-label {
+  color: var(--vp-c-danger-1, #e5484d);
+  background: rgba(229, 72, 77, 0.15);
+}
+
+.validation-issue.warning .issue-label {
+  color: #b8860b;
+  background: rgba(234, 179, 8, 0.15);
+}
+
+.issue-text {
+  flex: 1;
+  word-break: break-word;
+}
