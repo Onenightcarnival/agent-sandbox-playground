@@ -1,6 +1,6 @@
 import type OpenAI from 'openai'
+import type { Client as MCPClient } from '@modelcontextprotocol/sdk/client/index.js'
 import type { ChatMessage, ConsoleEntry, Skill, ToolMode } from '@/types'
-import { PyodideSandbox } from '@/sandbox/sandbox'
 
 interface AgentLoopOptions {
   client: OpenAI
@@ -8,7 +8,7 @@ interface AgentLoopOptions {
   toolMode: ToolMode
   skills: Skill[]
   messages: ChatMessage[]
-  sandbox: PyodideSandbox
+  mcpClient: MCPClient
   envVars?: Record<string, string>
   onAssistantChunk: (chunk: string) => void
   onToolCall: (name: string, args: string) => void
@@ -97,16 +97,6 @@ ${toolInstructions}
 Analyze each skill's description and Python code carefully to understand what modules and functions are available.`
 }
 
-function collectAllCodeFiles(skills: Skill[]): { name: string; content: string }[] {
-  const codeFiles: { name: string; content: string }[] = []
-  for (const skill of skills) {
-    for (const file of skill.files) {
-      codeFiles.push({ name: `${skill.name}/${file.name}`, content: file.content })
-    }
-  }
-  return codeFiles
-}
-
 function toOpenAIMessages(messages: ChatMessage[], toolMode: ToolMode): OpenAI.Chat.ChatCompletionMessageParam[] {
   return messages
     .filter(m => m.role !== 'system')
@@ -160,37 +150,45 @@ function generateId(): string {
   return `msg_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`
 }
 
+/**
+ * Flatten an MCP CallToolResult's content array into a single string suitable
+ * for feeding back to the LLM as a tool result.
+ */
+function flattenMCPContent(content: unknown): string {
+  if (!Array.isArray(content)) return ''
+  return content
+    .map((c: unknown) => {
+      if (c && typeof c === 'object' && 'type' in c) {
+        const part = c as { type: string; text?: string }
+        if (part.type === 'text' && typeof part.text === 'string') return part.text
+      }
+      return ''
+    })
+    .join('\n')
+    .trim()
+}
+
 export async function runAgentLoop(options: AgentLoopOptions) {
   const {
     client, modelId, toolMode, skills,
-    messages, sandbox,
-    onAssistantChunk, onToolCall, onToolResult, onConsole, onDone, envVars,
+    messages, mcpClient,
+    onAssistantChunk, onToolCall, onToolResult, onConsole, onDone,
     signal
   } = options
 
   const systemPrompt = buildSystemPrompt(skills, toolMode)
-  const allCodeFiles = collectAllCodeFiles(skills)
   const conversationMessages = toOpenAIMessages(messages, toolMode)
 
-  const toolDefs: OpenAI.Chat.ChatCompletionTool[] = [
-    {
-      type: 'function',
-      function: {
-        name: 'shell',
-        description: 'Run a shell command in the Python sandbox. Use "python script.py args" to run scripts, or "python -c \'code\'" for inline Python.',
-        parameters: {
-          type: 'object',
-          properties: {
-            command: {
-              type: 'string',
-              description: 'The shell command to execute, e.g. "python main.py --city Tokyo" or "python -c \\"from main import func; print(func())\\"'
-            }
-          },
-          required: ['command']
-        }
-      }
-    }
-  ]
+  // Discover tools via MCP — the agent loop no longer hardcodes them.
+  const { tools: mcpTools } = await mcpClient.listTools()
+  const toolDefs: OpenAI.Chat.ChatCompletionTool[] = mcpTools.map(t => ({
+    type: 'function',
+    function: {
+      name: t.name,
+      description: t.description ?? '',
+      parameters: (t.inputSchema ?? { type: 'object', properties: {} }) as Record<string, unknown>,
+    },
+  }))
 
   let iterationCount = 0
   const maxIterations = 10
@@ -259,10 +257,11 @@ export async function runAgentLoop(options: AgentLoopOptions) {
       onToolCall('shell', parsed)
       onConsole({ type: 'tool', message: `Calling: ${parsed}`, timestamp: Date.now() })
 
-      const result = await sandbox.execute(allCodeFiles, parsed, envVars)
-      const resultContent = result.success
-        ? result.output || '(no output)'
-        : `Error: ${result.error}`
+      const mcpResult = await mcpClient.callTool({
+        name: 'shell',
+        arguments: { command: parsed },
+      })
+      const resultContent = flattenMCPContent((mcpResult as { content: unknown }).content) || '(no output)'
 
       onToolResult('shell', resultContent)
 
@@ -324,22 +323,27 @@ export async function runAgentLoop(options: AgentLoopOptions) {
     })
 
     for (const tc of toolCalls.values()) {
-      let callExpression: string
+      let parsedArgs: Record<string, unknown> = {}
       try {
-        const args = JSON.parse(tc.arguments)
-        callExpression = args.command || args.call_expression || tc.arguments
+        parsedArgs = tc.arguments ? JSON.parse(tc.arguments) : {}
       } catch {
-        callExpression = tc.arguments
+        parsedArgs = {}
       }
 
-      onToolCall(tc.name, callExpression)
-      onConsole({ type: 'tool', message: `Calling: ${callExpression}`, timestamp: Date.now() })
+      // Use whatever the LLM sent as the display string — falls back to the
+      // raw arg blob so ill-formed JSON still shows up in the console.
+      const displayArg = typeof parsedArgs.command === 'string'
+        ? (parsedArgs.command as string)
+        : (tc.arguments || '')
 
-      const result = await sandbox.execute(allCodeFiles, callExpression, envVars)
+      onToolCall(tc.name, displayArg)
+      onConsole({ type: 'tool', message: `Calling: ${tc.name}(${displayArg})`, timestamp: Date.now() })
 
-      const resultContent = result.success
-        ? result.output || '(no output)'
-        : `Error: ${result.error}`
+      const mcpResult = await mcpClient.callTool({
+        name: tc.name,
+        arguments: parsedArgs,
+      })
+      const resultContent = flattenMCPContent((mcpResult as { content: unknown }).content) || '(no output)'
 
       onToolResult(tc.name, resultContent)
 

@@ -7,6 +7,8 @@ import ConsolePanel from './ConsolePanel'
 import { createClient } from '@/agent/openai-client'
 import { runAgentLoop } from '@/agent/loop'
 import { PyodideSandbox } from '@/sandbox/sandbox'
+import { createInBrowserMCP } from '@/mcp/sandbox-server'
+import type { Client as MCPClient } from '@modelcontextprotocol/sdk/client/index.js'
 import type { LLMConfig, ChatMessage, ConsoleEntry, Skill } from '@/types'
 import './Playground.css'
 
@@ -25,7 +27,15 @@ export default function Playground() {
   const [rightCollapsed, setRightCollapsed] = useState(false)
 
   const sandboxRef = useRef<PyodideSandbox | null>(null)
+  const mcpClientRef = useRef<MCPClient | null>(null)
+  const skillsRef = useRef<Skill[]>([])
+  const envVarsRef = useRef<Record<string, string>>({})
   const abortControllerRef = useRef<AbortController | null>(null)
+
+  // Keep refs in sync so the MCP server's tool handlers always see the latest
+  // skills/env — they're captured via getters at server-creation time.
+  useEffect(() => { skillsRef.current = skills }, [skills])
+  useEffect(() => { envVarsRef.current = envVars }, [envVars])
 
   const appendConsole = useCallback((entry: ConsoleEntry) => {
     setConsoleEntries(prev => [...prev, entry])
@@ -39,15 +49,35 @@ export default function Playground() {
     appendConsole({ type: 'info', message: 'Initializing Pyodide sandbox...', timestamp: Date.now() })
 
     sandbox.init()
-      .then(() => {
+      .then(async () => {
+        const mcpClient = await createInBrowserMCP({
+          sandbox,
+          getCodeFiles: () => skillsRef.current.flatMap(s =>
+            s.files.map(f => ({ name: `${s.name}/${f.name}`, content: f.content }))
+          ),
+          getEnvVars: () => envVarsRef.current,
+        })
+        mcpClientRef.current = mcpClient
+        if (import.meta.env.DEV) {
+          // Dev-only: exposes the live MCP client so tool calls can be driven
+          // from the devtools console without the LLM in the loop.
+          ;(window as unknown as { __mcp?: unknown }).__mcp = mcpClient
+        }
+        const { tools } = await mcpClient.listTools()
         setSandboxReady(true)
-        appendConsole({ type: 'info', message: 'Pyodide sandbox ready', timestamp: Date.now() })
+        appendConsole({
+          type: 'info',
+          message: `Pyodide sandbox ready; MCP server exposes ${tools.length} tools: ${tools.map(t => t.name).join(', ')}`,
+          timestamp: Date.now(),
+        })
       })
       .catch((e: any) => {
         appendConsole({ type: 'error', message: `Failed to init sandbox: ${e.message}`, timestamp: Date.now() })
       })
 
     return () => {
+      mcpClientRef.current?.close().catch(() => {})
+      mcpClientRef.current = null
       sandbox.terminate()
       sandboxRef.current = null
     }
@@ -140,7 +170,7 @@ export default function Playground() {
       appendConsole({ type: 'error', message: 'Please fill in Base URL, API Key, and Model', timestamp: Date.now() })
       return
     }
-    if (!sandboxReady || !sandboxRef.current) {
+    if (!sandboxReady || !sandboxRef.current || !mcpClientRef.current) {
       appendConsole({ type: 'error', message: 'Sandbox is not ready yet', timestamp: Date.now() })
       return
     }
@@ -172,7 +202,7 @@ export default function Playground() {
         toolMode: config.toolMode,
         skills,
         messages: workingMessages,
-        sandbox: sandboxRef.current,
+        mcpClient: mcpClientRef.current,
         envVars,
         signal: abortControllerRef.current.signal,
         onAssistantChunk(chunk) {
