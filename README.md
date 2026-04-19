@@ -64,12 +64,6 @@ npm run serve
 
 Then set the UI Base URL to `/api/v1` — the node server serves the static bundle and proxies `/api/*` to `API_TARGET`.
 
-## Architecture
-
-Both MCP servers run in-page using `@modelcontextprotocol/sdk` with `InMemoryTransport`. The agent loop calls `listTools()` on each client, namespaces tools with per-server prefixes, folds each server's `instructions` into the system prompt, and dispatches calls via `callTool()`.
-
-The MCP surface itself is fully generic — neither server exposes any "skill" vocabulary. Domain mapping (e.g. "the X skill" → `fs.list_files` → `sandbox.write_file` → `sandbox.shell`) is injected by the Playground as a system-prompt fragment, separate from the MCP interfaces.
-
 ## Tech Stack
 
 - Vite + React 18 (TypeScript)

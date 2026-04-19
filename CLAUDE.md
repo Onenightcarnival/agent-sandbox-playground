@@ -13,16 +13,28 @@ Browser-based playground for debugging custom OpenAI-format skills. Users author
 
 ## Architecture
 
-Two independent MCP servers run in the same page, mirroring a real agent container's dependencies:
+Two independent MCP servers live in the same browser tab, paired to the agent loop through `InMemoryTransport` from `@modelcontextprotocol/sdk`.
 
-- **FS MCP** (`src/mcp/fs-server.ts`) — read-only filesystem backed by the editor's skill state. Tools: `list_files`, `read_file`. Exposes each skill as a top-level directory. Completely generic — no "skill" vocabulary leaks into the MCP surface.
-- **Sandbox MCP** (`src/mcp/sandbox-server.ts`) — read-write ephemeral Pyodide workspace at `/workspace` (empty at init). Tools: `shell`, `list_files`, `read_file`, `write_file`. Also generic.
+- **FS MCP** (`src/mcp/fs-server.ts`) — read-only filesystem backed by the editor's skill state. Tools: `list_files`, `read_file`. Each skill sits under its own top-level directory.
+- **Sandbox MCP** (`src/mcp/sandbox-server.ts`) — read-write ephemeral Pyodide workspace at `/workspace` (empty at init). Tools: `shell`, `list_files`, `read_file`, `write_file`.
 
-The agent loop (`src/agent/loop.ts`) takes an array of named MCP clients, discovers their tools via `listTools()`, namespaces them with prefixes (`fs__*`, `sandbox__*`), and dispatches calls via `callTool()`. Prompt-mode instructions are rendered dynamically from the tool list. Each server's `instructions` field is automatically folded into the system prompt.
+The agent loop (`src/agent/loop.ts`) takes an array of named MCP clients, discovers tools via `listTools()`, namespaces them with per-server prefixes (`fs__*`, `sandbox__*`), and dispatches via `callTool()`. Each server's `instructions` string is folded into the system prompt automatically; prompt-mode tool docs are rendered dynamically from the live tool list.
 
-The "business-layer" system prompt (in `src/components/Playground.tsx`) is what maps user domain vocabulary like "skill" onto the generic MCP tools. That split — generic MCPs, business-side semantic glue — is the intended production model.
+Common Python packages (requests, httpx) are available via micropip; `pyodide_http.patch_all()` is pre-applied so `requests`/`httpx` work in the browser.
 
-Common Python packages (requests, httpx) available via micropip; `pyodide_http.patch_all()` is pre-applied so `requests`/`httpx` work in the browser.
+### Responsibility split
+
+- **Sandbox MCP** — ephemeral execution environment. Knows nothing about "skills". Production analog: a Docker container or a remote sandbox service.
+- **FS MCP** — read-only content store. Knows nothing about "skills". Production analog: an S3 bucket / git repo / skill registry.
+- **Playground (React app)** — the "business container". Owns editor state, translates domain vocabulary (the word "skill") into concrete MCP tool sequences via a `systemPromptExtra` fragment, and orchestrates the agent loop.
+
+### Design principles
+
+- MCP servers stay **generic**: no domain vocabulary ("skill") appears in tool names, tool descriptions, or server instructions. Either server could be swapped for a real remote implementation without the agent loop noticing.
+- **No implicit preloading.** `/workspace` starts empty; the agent stages files itself through `sandbox.write_file`. This mirrors what a real deployment has to do at boot.
+- **Discovery over hardcoding.** Tools are fetched via `listTools()`; adding a third MCP means a file drop-in, not a loop change. Prompt-mode docs are generated from live schemas.
+- **Self-description propagates.** Each server's MCP `instructions` field is surfaced to the LLM automatically, so new servers become visible without prompt-engineering in the loop.
+- **Domain semantics live only in the business layer.** Mapping "the X skill" → `fs.list_files` → `sandbox.write_file` → `sandbox.shell` is a `systemPromptExtra` string owned by the Playground, not any tool description.
 
 ## Project Structure
 - `index.html` — Vite entry
