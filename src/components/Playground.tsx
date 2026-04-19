@@ -59,6 +59,8 @@ export default function Playground() {
     return []
   })
   const [mcpServers, setMcpServers] = useState<MCPServerInfo[]>([])
+  const [workspaceRefreshKey, setWorkspaceRefreshKey] = useState(0)
+  const bumpWorkspace = useCallback(() => setWorkspaceRefreshKey(k => k + 1), [])
 
   useEffect(() => {
     try {
@@ -146,6 +148,7 @@ export default function Playground() {
         ]
         setMcpServers(servers)
         setSandboxReady(true)
+        bumpWorkspace()
         appendConsole({
           type: 'info',
           message: `Sandbox MCP: ${sandboxTools.tools.map(t => t.name).join(', ')}`,
@@ -302,8 +305,9 @@ export default function Playground() {
         onToolCall(name, args) {
           appendConsole({ type: 'tool', message: `Tool call: ${name} -> ${args}`, timestamp: Date.now() })
         },
-        onToolResult(_name, result) {
+        onToolResult(name, result) {
           appendConsole({ type: 'output', message: `Tool result: ${result}`, timestamp: Date.now() })
+          if (name.startsWith('sandbox__')) bumpWorkspace()
         },
         onConsole(entry) {
           appendConsole(entry)
@@ -434,6 +438,9 @@ export default function Playground() {
               entries={consoleEntries}
               onClear={clearConsole}
               onCollapse={() => setRightCollapsed(true)}
+              sandbox={sandboxRef.current}
+              sandboxReady={sandboxReady}
+              workspaceRefreshKey={workspaceRefreshKey}
             />
           </div>
         ) : (
