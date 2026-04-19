@@ -4,23 +4,15 @@ import './ConfigPanel.css'
 
 interface Props {
   onConfigChange: (config: LLMConfig) => void
-  onEnvVarsChange: (vars: Record<string, string>) => void
-}
-
-interface EnvVar {
-  key: string
-  value: string
 }
 
 const STORAGE_KEY = 'agent-sandbox-config'
-const ENV_STORAGE_KEY = 'agent-sandbox-env'
 
-export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) {
+export default function ConfigPanel({ onConfigChange }: Props) {
   const [baseUrl, setBaseUrl] = useState('')
   const [apiKey, setApiKey] = useState('')
   const [modelId, setModelId] = useState('')
   const [toolMode, setToolMode] = useState<ToolMode>('function_call')
-  const [envVars, setEnvVars] = useState<EnvVar[]>([])
   const [collapsed, setCollapsed] = useState(true)
   const [hydrated, setHydrated] = useState(false)
 
@@ -48,40 +40,14 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
       if (env.VITE_OPENAI_API_KEY) setApiKey(env.VITE_OPENAI_API_KEY)
       if (env.VITE_OPENAI_MODEL_ID) setModelId(env.VITE_OPENAI_MODEL_ID)
     }
-    try {
-      const savedEnv = localStorage.getItem(ENV_STORAGE_KEY)
-      if (savedEnv) setEnvVars(JSON.parse(savedEnv))
-    } catch {}
     setHydrated(true)
   }, [])
-
-  const envVarsMap = useMemo(() => {
-    const vars: Record<string, string> = {
-      OPENAI_BASE_URL: baseUrl,
-      OPENAI_API_KEY: apiKey,
-      MODEL_ID: modelId
-    }
-    for (const { key, value } of envVars) {
-      if (key.trim()) vars[key.trim()] = value
-    }
-    return vars
-  }, [baseUrl, apiKey, modelId, envVars])
 
   useEffect(() => {
     if (!hydrated) return
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ baseUrl, apiKey, modelId, toolMode }))
     onConfigChange({ baseUrl, apiKey, modelId, toolMode })
   }, [baseUrl, apiKey, modelId, toolMode, hydrated, onConfigChange])
-
-  useEffect(() => {
-    if (!hydrated) return
-    localStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(envVars))
-  }, [envVars, hydrated])
-
-  useEffect(() => {
-    if (!hydrated) return
-    onEnvVarsChange(envVarsMap)
-  }, [envVarsMap, hydrated, onEnvVarsChange])
 
   const hasConfig = !!(baseUrl && apiKey && modelId)
 
@@ -95,12 +61,6 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
     const modeLabel = toolMode === 'function_call' ? 'FnCall' : 'Prompt'
     return `${model} · ${key} · ${domain} · ${modeLabel}`
   }, [baseUrl, apiKey, modelId, toolMode])
-
-  const addEnvVar = () => setEnvVars(prev => [...prev, { key: '', value: '' }])
-  const removeEnvVar = (index: number) =>
-    setEnvVars(prev => prev.filter((_, i) => i !== index))
-  const updateEnvVar = (index: number, field: 'key' | 'value', value: string) =>
-    setEnvVars(prev => prev.map((v, i) => (i === index ? { ...v, [field]: value } : v)))
 
   return (
     <div className={`config-panel ${collapsed ? 'collapsed' : ''}`}>
@@ -165,31 +125,6 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
             </div>
           </div>
 
-          <div className="env-section">
-            <label className="env-label">Environment Variables</label>
-            <div className="env-list">
-              {envVars.map((env, i) => (
-                <div key={i} className="env-row">
-                  <input
-                    value={env.key}
-                    onChange={e => updateEnvVar(i, 'key', e.target.value)}
-                    type="text"
-                    placeholder="KEY"
-                    className="env-input env-key-input"
-                  />
-                  <input
-                    value={env.value}
-                    onChange={e => updateEnvVar(i, 'value', e.target.value)}
-                    type="text"
-                    placeholder="value"
-                    className="env-input env-value-input"
-                  />
-                  <button className="env-remove" onClick={() => removeEnvVar(i)} title="Remove">×</button>
-                </div>
-              ))}
-            </div>
-            <button className="env-add" onClick={addEnvVar}>+ Add Variable</button>
-          </div>
         </>
       )}
     </div>

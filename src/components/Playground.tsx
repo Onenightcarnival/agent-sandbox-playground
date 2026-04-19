@@ -1,17 +1,35 @@
-import { useState, useRef, useEffect, useCallback } from 'react'
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import ConfigPanel from './ConfigPanel'
 import SkillManager from './SkillManager'
 import SkillEditor from './SkillEditor'
+import InspectPanel, { type EnvVar } from './InspectPanel'
 import ChatPanel from './ChatPanel'
 import ConsolePanel from './ConsolePanel'
 import { createClient } from '@/agent/openai-client'
 import { runAgentLoop, type NamedMCPClient } from '@/agent/loop'
+import { DEFAULT_SYSTEM_PROMPT } from '@/agent/default-prompt'
 import { PyodideSandbox } from '@/sandbox/sandbox'
 import { createSandboxMCP } from '@/mcp/sandbox-server'
 import { createFSMCP } from '@/mcp/fs-server'
 import type { Client as MCPClient } from '@modelcontextprotocol/sdk/client/index.js'
+import type { Tool as MCPTool } from '@modelcontextprotocol/sdk/types.js'
 import type { LLMConfig, ChatMessage, ConsoleEntry, Skill } from '@/types'
 import './Playground.css'
+
+const SYSTEM_PROMPT_STORAGE_KEY = 'agent-sandbox-system-prompt'
+const ENV_STORAGE_KEY = 'agent-sandbox-env'
+
+export interface MCPServerInfo {
+  /** Namespacing prefix used in tool names (e.g. "fs", "sandbox"). */
+  prefix: string
+  /** Human-readable server name from MCP `serverInfo.name`. */
+  name: string
+  /** Server-advertised `instructions` field, if any. */
+  instructions: string
+  tools: MCPTool[]
+}
+
+type LeftTab = 'skills' | 'inspect'
 
 export default function Playground() {
   const [config, setConfig] = useState<LLMConfig>({ baseUrl: '', apiKey: '', modelId: '', toolMode: 'function_call' })
@@ -23,9 +41,51 @@ export default function Playground() {
   const [loading, setLoading] = useState(false)
   const [streamingContent, setStreamingContent] = useState('')
   const [sandboxReady, setSandboxReady] = useState(false)
-  const [envVars, setEnvVars] = useState<Record<string, string>>({})
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [leftTab, setLeftTab] = useState<LeftTab>('skills')
+  const [systemPrompt, setSystemPrompt] = useState<string>(() => {
+    try {
+      const saved = localStorage.getItem(SYSTEM_PROMPT_STORAGE_KEY)
+      if (saved !== null) return saved
+    } catch {}
+    return DEFAULT_SYSTEM_PROMPT
+  })
+  const [customEnvVars, setCustomEnvVars] = useState<EnvVar[]>(() => {
+    try {
+      const saved = localStorage.getItem(ENV_STORAGE_KEY)
+      if (saved) return JSON.parse(saved)
+    } catch {}
+    return []
+  })
+  const [mcpServers, setMcpServers] = useState<MCPServerInfo[]>([])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(SYSTEM_PROMPT_STORAGE_KEY, systemPrompt)
+    } catch {}
+  }, [systemPrompt])
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(customEnvVars))
+    } catch {}
+  }, [customEnvVars])
+
+  // Full env map handed to the sandbox MCP: config values auto-exposed under
+  // canonical names, plus whatever the user added in the Inspect panel.
+  const envVars = useMemo<Record<string, string>>(() => {
+    const vars: Record<string, string> = {
+      OPENAI_BASE_URL: config.baseUrl,
+      OPENAI_API_KEY: config.apiKey,
+      MODEL_ID: config.modelId,
+    }
+    for (const { key, value } of customEnvVars) {
+      const k = key.trim()
+      if (k) vars[k] = value
+    }
+    return vars
+  }, [config.baseUrl, config.apiKey, config.modelId, customEnvVars])
 
   const sandboxRef = useRef<PyodideSandbox | null>(null)
   const sandboxClientRef = useRef<MCPClient | null>(null)
@@ -70,6 +130,21 @@ export default function Playground() {
           sandboxClient.listTools(),
           fsClient.listTools(),
         ])
+        const servers: MCPServerInfo[] = [
+          {
+            prefix: 'fs',
+            name: fsClient.getServerVersion?.()?.name ?? 'fs',
+            instructions: fsClient.getInstructions?.() ?? '',
+            tools: fsTools.tools,
+          },
+          {
+            prefix: 'sandbox',
+            name: sandboxClient.getServerVersion?.()?.name ?? 'sandbox',
+            instructions: sandboxClient.getInstructions?.() ?? '',
+            tools: sandboxTools.tools,
+          },
+        ]
+        setMcpServers(servers)
         setSandboxReady(true)
         appendConsole({
           type: 'info',
@@ -213,28 +288,13 @@ export default function Playground() {
         { prefix: 'fs', client: fsClientRef.current },
         { prefix: 'sandbox', client: sandboxClientRef.current },
       ]
-      // Business-layer prompt hint. MCP servers stay generic — this is where
-      // the playground (the "agent container") teaches the LLM how to map the
-      // user's domain vocabulary ("skill") onto the generic tools.
-      const systemPromptExtra = `The read-only filesystem (fs MCP) holds a library of *skills*. Each top-level directory is one skill; its SKILL.md describes what the skill does and how to call it. When the user's request names or references a skill (e.g. "using the X skill", "run X", "via X"), do NOT answer from memory — instead:
-
-1. List files in the fs MCP to locate the relevant skill directory.
-2. Read its SKILL.md to learn how to invoke it.
-3. Copy the needed source files from the fs MCP into the sandbox (sandbox.write_file).
-4. Run the skill in the sandbox (sandbox.shell).
-5. Report the sandbox output as your answer.
-
-Skill outputs may differ from naive textbook computation (e.g. applied calibration) — so trust the sandbox result, not your prior knowledge.
-
-If the user's question has no skill reference and no tool is needed, answer directly without invoking tools.`
-
       await runAgentLoop({
         client,
         modelId: config.modelId,
         toolMode: config.toolMode,
         messages: workingMessages,
         mcpClients,
-        systemPromptExtra,
+        systemPrompt,
         signal: abortControllerRef.current.signal,
         onAssistantChunk(chunk) {
           setStreamingContent(prev => prev + chunk)
@@ -282,41 +342,70 @@ If the user's question has no skill reference and no tool is needed, answer dire
 
   return (
     <div className="playground">
-      <ConfigPanel
-        onConfigChange={setConfig}
-        onEnvVarsChange={setEnvVars}
-      />
+      <ConfigPanel onConfigChange={setConfig} />
 
       <div className={layoutClass}>
         {!leftCollapsed ? (
           <div className="left-panel">
             <div className="panel-header">
-              <span>Code</span>
+              <div className="left-tabs" role="tablist" aria-label="Left panel">
+                <button
+                  role="tab"
+                  aria-selected={leftTab === 'skills'}
+                  className={`left-tab ${leftTab === 'skills' ? 'active' : ''}`}
+                  onClick={() => setLeftTab('skills')}
+                >
+                  Skills
+                </button>
+                <button
+                  role="tab"
+                  aria-selected={leftTab === 'inspect'}
+                  className={`left-tab ${leftTab === 'inspect' ? 'active' : ''}`}
+                  onClick={() => setLeftTab('inspect')}
+                >
+                  Inspect
+                </button>
+              </div>
               <button className="panel-toggle" onClick={() => setLeftCollapsed(true)} title="Collapse">◀</button>
             </div>
-            <SkillManager
-              skills={skills}
-              onAdd={handleAddSkill}
-              onRemove={handleRemoveSkill}
-              onSelect={handleSelectSkill}
-            />
-            <div className="editor-section">
-              <SkillEditor
-                skills={skills}
-                selectedSkillId={selectedSkillId}
-                selectedFileName={selectedFileName}
-                onSelectSkill={setSelectedSkillId}
-                onSelectFile={setSelectedFileName}
-                onUpdateFile={handleUpdateFile}
-                onAddFile={handleAddFile}
-                onRemoveFile={handleRemoveFile}
-              />
-            </div>
+            {leftTab === 'skills' ? (
+              <>
+                <SkillManager
+                  skills={skills}
+                  onAdd={handleAddSkill}
+                  onRemove={handleRemoveSkill}
+                  onSelect={handleSelectSkill}
+                />
+                <div className="editor-section">
+                  <SkillEditor
+                    skills={skills}
+                    selectedSkillId={selectedSkillId}
+                    selectedFileName={selectedFileName}
+                    onSelectSkill={setSelectedSkillId}
+                    onSelectFile={setSelectedFileName}
+                    onUpdateFile={handleUpdateFile}
+                    onAddFile={handleAddFile}
+                    onRemoveFile={handleRemoveFile}
+                  />
+                </div>
+              </>
+            ) : (
+              <div className="inspect-container">
+                <InspectPanel
+                  envVars={customEnvVars}
+                  onEnvVarsChange={setCustomEnvVars}
+                  systemPrompt={systemPrompt}
+                  defaultSystemPrompt={DEFAULT_SYSTEM_PROMPT}
+                  onSystemPromptChange={setSystemPrompt}
+                  mcpServers={mcpServers}
+                />
+              </div>
+            )}
           </div>
         ) : (
           <div className="collapsed-strip left-strip" onClick={() => setLeftCollapsed(false)}>
             <span className="strip-icon">▶</span>
-            <span className="strip-label">Code</span>
+            <span className="strip-label">{leftTab === 'skills' ? 'Skills' : 'Inspect'}</span>
           </div>
         )}
 

@@ -14,8 +14,8 @@ interface AgentLoopOptions {
   toolMode: ToolMode
   messages: ChatMessage[]
   mcpClients: NamedMCPClient[]
-  /** Extra text appended to the (otherwise minimal) system prompt. */
-  systemPromptExtra?: string
+  /** User-authored system prompt (msg 1). Sent verbatim when non-empty. */
+  systemPrompt?: string
   onAssistantChunk: (chunk: string) => void
   onToolCall: (name: string, args: string) => void
   onToolResult: (name: string, result: string) => void
@@ -92,19 +92,35 @@ function routeTool(clients: NamedMCPClient[], qualified: string): { client: MCPC
   return hit ? { client: hit.client, bareName } : null
 }
 
-function buildSystemPrompt(
-  extra: string | undefined,
+/**
+ * Build the system messages sent to the model, in order:
+ *   1. User-authored system prompt (editable in the UI).
+ *   2. Auto-generated MCP server instructions — read-only, mirrors what a
+ *      MCP-aware SDK would inject from each server's `instructions` field.
+ *   3. Auto-generated prompt-mode tool docs — only when toolMode === 'prompt',
+ *      since function_call mode carries tool schemas via the `tools` param.
+ * Empty parts are dropped so we never send a blank system message.
+ */
+function buildSystemMessages(
+  userPrompt: string | undefined,
+  serverHints: string[],
   toolMode: ToolMode,
   toolDefs: OpenAI.Chat.ChatCompletionTool[],
-): string {
-  const base = 'You are a helpful assistant.'
-  const parts = [base]
-  if (extra) parts.push(extra)
-  if (toolMode === 'prompt') {
-    const instr = buildPromptModeInstructions(toolDefs)
-    if (instr) parts.push(instr)
+): OpenAI.Chat.ChatCompletionMessageParam[] {
+  const out: OpenAI.Chat.ChatCompletionMessageParam[] = []
+  const userContent = userPrompt?.trim()
+  if (userContent) out.push({ role: 'system', content: userContent })
+  if (serverHints.length > 0) {
+    out.push({
+      role: 'system',
+      content: `# Connected MCP servers\n\n${serverHints.join('\n\n')}`,
+    })
   }
-  return parts.join('\n\n')
+  if (toolMode === 'prompt') {
+    const protocol = buildPromptModeInstructions(toolDefs)
+    if (protocol) out.push({ role: 'system', content: protocol })
+  }
+  return out
 }
 
 function toOpenAIMessages(messages: ChatMessage[], toolMode: ToolMode): OpenAI.Chat.ChatCompletionMessageParam[] {
@@ -186,7 +202,7 @@ function generateId(): string {
 export async function runAgentLoop(options: AgentLoopOptions) {
   const {
     client, modelId, toolMode,
-    messages, mcpClients, systemPromptExtra,
+    messages, mcpClients, systemPrompt,
     onAssistantChunk, onToolCall, onToolResult, onConsole, onDone,
     signal
   } = options
@@ -218,13 +234,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
     }
   }
 
-  // Prompt-mode instructions are derived from toolDefs — scales with whatever
-  // servers are connected, no hardcoding.
-  const serverBlock = serverHints.length > 0
-    ? `# Connected MCP servers\n\n${serverHints.join('\n\n')}`
-    : ''
-  const fullExtra = [systemPromptExtra, serverBlock].filter(Boolean).join('\n\n') || undefined
-  const systemPrompt = buildSystemPrompt(fullExtra, toolMode, toolDefs)
+  const systemMessages = buildSystemMessages(systemPrompt, serverHints, toolMode, toolDefs)
 
   let iterationCount = 0
   const maxIterations = 20 // Mode B needs more steps: list → read → write → shell
@@ -239,10 +249,7 @@ export async function runAgentLoop(options: AgentLoopOptions) {
 
     const requestParams: OpenAI.Chat.ChatCompletionCreateParamsStreaming = {
       model: modelId,
-      messages: [
-        { role: 'system', content: systemPrompt },
-        ...conversationMessages
-      ],
+      messages: [...systemMessages, ...conversationMessages],
       stream: true
     }
     if (toolMode === 'function_call') {
