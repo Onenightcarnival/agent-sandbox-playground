@@ -44,6 +44,7 @@ export default function Playground() {
   const [sandboxReady, setSandboxReady] = useState(false)
   const [leftCollapsed, setLeftCollapsed] = useState(false)
   const [rightCollapsed, setRightCollapsed] = useState(false)
+  const [editorFullscreen, setEditorFullscreen] = useState(false)
   const [leftTab, setLeftTab] = useState<LeftTab>('skills')
   const [systemPrompt, setSystemPrompt] = useState<string>(() => {
     try {
@@ -366,8 +367,9 @@ export default function Playground() {
 
   const layoutClass = [
     'main-layout',
-    leftCollapsed && 'left-collapsed',
-    rightCollapsed && 'right-collapsed'
+    editorFullscreen && 'editor-fullscreen',
+    !editorFullscreen && leftCollapsed && 'left-collapsed',
+    !editorFullscreen && rightCollapsed && 'right-collapsed'
   ].filter(Boolean).join(' ')
 
   return (
@@ -396,7 +398,18 @@ export default function Playground() {
                   Inspect
                 </button>
               </div>
-              <button className="panel-toggle" onClick={() => setLeftCollapsed(true)} title="Collapse">◀</button>
+              <div className="panel-header-actions">
+                <button
+                  className={`panel-toggle ${editorFullscreen ? 'active' : ''}`}
+                  onClick={() => setEditorFullscreen(f => !f)}
+                  title={editorFullscreen ? 'Restore default layout' : 'Fullscreen editor'}
+                >
+                  {editorFullscreen ? '⤢' : '⛶'}
+                </button>
+                {!editorFullscreen && (
+                  <button className="panel-toggle" onClick={() => setLeftCollapsed(true)} title="Collapse">◀</button>
+                )}
+              </div>
             </div>
             {leftTab === 'skills' ? (
               <>
@@ -441,26 +454,28 @@ export default function Playground() {
           </div>
         )}
 
-        <div className="center-panel">
-          <div className="section-header">
-            <span>Chat</span>
-            <div className="header-actions">
-              {skills.length > 0 && (
-                <span className="skill-count">{skills.length} skill{skills.length !== 1 ? 's' : ''}</span>
-              )}
-              <button className="header-btn" onClick={clearChat}>Clear</button>
+        {!editorFullscreen && (
+          <div className="center-panel">
+            <div className="section-header">
+              <span>Chat</span>
+              <div className="header-actions">
+                {skills.length > 0 && (
+                  <span className="skill-count">{skills.length} skill{skills.length !== 1 ? 's' : ''}</span>
+                )}
+                <button className="header-btn" onClick={clearChat}>Clear</button>
+              </div>
             </div>
+            <ChatPanel
+              messages={messages}
+              loading={loading}
+              streamingContent={streamingContent}
+              onSend={handleSend}
+              onStop={handleStop}
+            />
           </div>
-          <ChatPanel
-            messages={messages}
-            loading={loading}
-            streamingContent={streamingContent}
-            onSend={handleSend}
-            onStop={handleStop}
-          />
-        </div>
+        )}
 
-        {!rightCollapsed ? (
+        {!editorFullscreen && (!rightCollapsed ? (
           <div className="right-panel">
             <ConsolePanel
               entries={consoleEntries}
@@ -479,7 +494,7 @@ export default function Playground() {
               <span className="strip-badge">{consoleEntries.length}</span>
             )}
           </div>
-        )}
+        ))}
       </div>
 
       {!sandboxReady && (
