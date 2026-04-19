@@ -216,7 +216,7 @@ export default function Playground() {
       // Business-layer prompt hint. MCP servers stay generic — this is where
       // the playground (the "agent container") teaches the LLM how to map the
       // user's domain vocabulary ("skill") onto the generic tools.
-      const systemPromptExtra = `The read-only filesystem (fs MCP) holds a library of *skills*. Each top-level directory is one skill; its SKILL.md describes what the skill does and how to call it. When the user's request references a skill (e.g. "通过 X 告诉我…", "using the X skill", "run X"), do NOT answer from memory — instead:
+      const systemPromptExtra = `The read-only filesystem (fs MCP) holds a library of *skills*. Each top-level directory is one skill; its SKILL.md describes what the skill does and how to call it. When the user's request names or references a skill (e.g. "using the X skill", "run X", "via X"), do NOT answer from memory — instead:
 
 1. List files in the fs MCP to locate the relevant skill directory.
 2. Read its SKILL.md to learn how to invoke it.
