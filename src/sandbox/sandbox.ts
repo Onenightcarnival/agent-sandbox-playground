@@ -2,6 +2,11 @@ import type { SandboxResult, ConsoleEntry } from '@/types'
 
 type LogCallback = (entry: ConsoleEntry) => void
 
+export interface FSEntry { name: string; type: 'file' | 'dir' }
+export interface FSWriteResult { success: boolean; path: string; error?: string }
+export interface FSReadResult { success: boolean; path: string; content?: string; error?: string }
+export interface FSListResult { success: boolean; path: string; entries?: FSEntry[]; error?: string }
+
 export class PyodideSandbox {
   private worker: Worker | null = null
   private pendingRequests = new Map<string, { resolve: (v: any) => void; reject: (e: any) => void }>()
@@ -60,15 +65,26 @@ export class PyodideSandbox {
     return this.sendMessage('install', { packages })
   }
 
-  async execute(codeFiles: { name: string; content: string }[], callExpression: string, envVars?: Record<string, string>): Promise<SandboxResult> {
-    // Deep-copy payload to strip Vue reactive proxies — they can't be cloned via postMessage
-    const result = await this.sendMessage('execute', JSON.parse(JSON.stringify({ codeFiles, callExpression, envVars })))
+  async execute(command: string, envVars?: Record<string, string>): Promise<SandboxResult> {
+    const result = await this.sendMessage('execute', JSON.parse(JSON.stringify({ command, envVars })))
     return {
       success: result.success,
       output: result.output || '',
       error: result.error,
       logs: result.logs || []
     }
+  }
+
+  async writeFile(path: string, content: string): Promise<FSWriteResult> {
+    return this.sendMessage('fs_write', { path, content })
+  }
+
+  async readFile(path: string): Promise<FSReadResult> {
+    return this.sendMessage('fs_read', { path })
+  }
+
+  async listDir(path?: string): Promise<FSListResult> {
+    return this.sendMessage('fs_list', { path })
   }
 
   private sendMessage(action: string, payload: any): Promise<any> {

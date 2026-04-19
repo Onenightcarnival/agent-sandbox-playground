@@ -5,9 +5,10 @@ import SkillEditor from './SkillEditor'
 import ChatPanel from './ChatPanel'
 import ConsolePanel from './ConsolePanel'
 import { createClient } from '@/agent/openai-client'
-import { runAgentLoop } from '@/agent/loop'
+import { runAgentLoop, type NamedMCPClient } from '@/agent/loop'
 import { PyodideSandbox } from '@/sandbox/sandbox'
-import { createInBrowserMCP } from '@/mcp/sandbox-server'
+import { createSandboxMCP } from '@/mcp/sandbox-server'
+import { createFSMCP } from '@/mcp/fs-server'
 import type { Client as MCPClient } from '@modelcontextprotocol/sdk/client/index.js'
 import type { LLMConfig, ChatMessage, ConsoleEntry, Skill } from '@/types'
 import './Playground.css'
@@ -27,13 +28,14 @@ export default function Playground() {
   const [rightCollapsed, setRightCollapsed] = useState(false)
 
   const sandboxRef = useRef<PyodideSandbox | null>(null)
-  const mcpClientRef = useRef<MCPClient | null>(null)
+  const sandboxClientRef = useRef<MCPClient | null>(null)
+  const fsClientRef = useRef<MCPClient | null>(null)
   const skillsRef = useRef<Skill[]>([])
   const envVarsRef = useRef<Record<string, string>>({})
   const abortControllerRef = useRef<AbortController | null>(null)
 
   // Keep refs in sync so the MCP server's tool handlers always see the latest
-  // skills/env — they're captured via getters at server-creation time.
+  // skills/env — captured via getters at server-creation time.
   useEffect(() => { skillsRef.current = skills }, [skills])
   useEffect(() => { envVarsRef.current = envVars }, [envVars])
 
@@ -50,24 +52,33 @@ export default function Playground() {
 
     sandbox.init()
       .then(async () => {
-        const mcpClient = await createInBrowserMCP({
-          sandbox,
-          getCodeFiles: () => skillsRef.current.flatMap(s =>
-            s.files.map(f => ({ name: `${s.name}/${f.name}`, content: f.content }))
-          ),
-          getEnvVars: () => envVarsRef.current,
-        })
-        mcpClientRef.current = mcpClient
-        if (import.meta.env.DEV) {
-          // Dev-only: exposes the live MCP client so tool calls can be driven
-          // from the devtools console without the LLM in the loop.
-          ;(window as unknown as { __mcp?: unknown }).__mcp = mcpClient
+        const [sandboxClient, fsClient] = await Promise.all([
+          createSandboxMCP({ sandbox, getEnvVars: () => envVarsRef.current }),
+          createFSMCP({ getSkills: () => skillsRef.current }),
+        ])
+        sandboxClientRef.current = sandboxClient
+        fsClientRef.current = fsClient
+        // Dev-only: exposes live MCP clients so tool calls can be driven from
+        // the devtools console without the LLM in the loop.
+        if ((import.meta as unknown as { env?: { DEV?: boolean } }).env?.DEV) {
+          ;(window as unknown as { __mcp?: { sandbox: MCPClient; fs: MCPClient } }).__mcp = {
+            sandbox: sandboxClient,
+            fs: fsClient,
+          }
         }
-        const { tools } = await mcpClient.listTools()
+        const [sandboxTools, fsTools] = await Promise.all([
+          sandboxClient.listTools(),
+          fsClient.listTools(),
+        ])
         setSandboxReady(true)
         appendConsole({
           type: 'info',
-          message: `Pyodide sandbox ready; MCP server exposes ${tools.length} tools: ${tools.map(t => t.name).join(', ')}`,
+          message: `Sandbox MCP: ${sandboxTools.tools.map(t => t.name).join(', ')}`,
+          timestamp: Date.now(),
+        })
+        appendConsole({
+          type: 'info',
+          message: `FS MCP (read-only): ${fsTools.tools.map(t => t.name).join(', ')}`,
           timestamp: Date.now(),
         })
       })
@@ -76,8 +87,10 @@ export default function Playground() {
       })
 
     return () => {
-      mcpClientRef.current?.close().catch(() => {})
-      mcpClientRef.current = null
+      sandboxClientRef.current?.close().catch(() => {})
+      fsClientRef.current?.close().catch(() => {})
+      sandboxClientRef.current = null
+      fsClientRef.current = null
       sandbox.terminate()
       sandboxRef.current = null
     }
@@ -89,7 +102,7 @@ export default function Playground() {
     setSelectedFileName('SKILL.md')
     appendConsole({
       type: 'info',
-      message: `Loaded skill: ${skill.name} (${skill.files.length} Python files)`,
+      message: `Loaded skill: ${skill.name} (${skill.files.length} files)`,
       timestamp: Date.now()
     })
 
@@ -170,7 +183,7 @@ export default function Playground() {
       appendConsole({ type: 'error', message: 'Please fill in Base URL, API Key, and Model', timestamp: Date.now() })
       return
     }
-    if (!sandboxReady || !sandboxRef.current || !mcpClientRef.current) {
+    if (!sandboxReady || !sandboxRef.current || !sandboxClientRef.current || !fsClientRef.current) {
       appendConsole({ type: 'error', message: 'Sandbox is not ready yet', timestamp: Date.now() })
       return
     }
@@ -196,14 +209,32 @@ export default function Playground() {
 
     try {
       const client = createClient(config)
+      const mcpClients: NamedMCPClient[] = [
+        { prefix: 'fs', client: fsClientRef.current },
+        { prefix: 'sandbox', client: sandboxClientRef.current },
+      ]
+      // Business-layer prompt hint. MCP servers stay generic — this is where
+      // the playground (the "agent container") teaches the LLM how to map the
+      // user's domain vocabulary ("skill") onto the generic tools.
+      const systemPromptExtra = `The read-only filesystem (fs MCP) holds a library of *skills*. Each top-level directory is one skill; its SKILL.md describes what the skill does and how to call it. When the user's request references a skill (e.g. "通过 X 告诉我…", "using the X skill", "run X"), do NOT answer from memory — instead:
+
+1. List files in the fs MCP to locate the relevant skill directory.
+2. Read its SKILL.md to learn how to invoke it.
+3. Copy the needed source files from the fs MCP into the sandbox (sandbox.write_file).
+4. Run the skill in the sandbox (sandbox.shell).
+5. Report the sandbox output as your answer.
+
+Skill outputs may differ from naive textbook computation (e.g. applied calibration) — so trust the sandbox result, not your prior knowledge.
+
+If the user's question has no skill reference and no tool is needed, answer directly without invoking tools.`
+
       await runAgentLoop({
         client,
         modelId: config.modelId,
         toolMode: config.toolMode,
-        skills,
         messages: workingMessages,
-        mcpClient: mcpClientRef.current,
-        envVars,
+        mcpClients,
+        systemPromptExtra,
         signal: abortControllerRef.current.signal,
         onAssistantChunk(chunk) {
           setStreamingContent(prev => prev + chunk)

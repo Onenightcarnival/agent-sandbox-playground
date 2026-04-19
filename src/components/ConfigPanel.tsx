@@ -25,6 +25,11 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
   const [hydrated, setHydrated] = useState(false)
 
   useEffect(() => {
+    // Restore from localStorage if present; otherwise fall back to VITE_* env
+    // (loaded from .env.local during dev build). Env provides the dev default;
+    // anything the user types in the UI thereafter overrides via localStorage.
+    const env = (import.meta as unknown as { env?: Record<string, string | undefined> }).env ?? {}
+    let hydratedFromStorage = false
     try {
       const saved = localStorage.getItem(STORAGE_KEY)
       if (saved) {
@@ -35,8 +40,14 @@ export default function ConfigPanel({ onConfigChange, onEnvVarsChange }: Props) 
         if (config.toolMode === 'function_call' || config.toolMode === 'prompt') {
           setToolMode(config.toolMode)
         }
+        hydratedFromStorage = true
       }
     } catch {}
+    if (!hydratedFromStorage) {
+      if (env.VITE_OPENAI_BASE_URL) setBaseUrl(env.VITE_OPENAI_BASE_URL)
+      if (env.VITE_OPENAI_API_KEY) setApiKey(env.VITE_OPENAI_API_KEY)
+      if (env.VITE_OPENAI_MODEL_ID) setModelId(env.VITE_OPENAI_MODEL_ID)
+    }
     try {
       const savedEnv = localStorage.getItem(ENV_STORAGE_KEY)
       if (savedEnv) setEnvVars(JSON.parse(savedEnv))

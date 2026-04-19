@@ -6,25 +6,28 @@ import {
   ListToolsRequestSchema,
 } from '@modelcontextprotocol/sdk/types.js'
 import type { PyodideSandbox } from '@/sandbox/sandbox'
-import type { SkillFile } from '@/types'
 
-export interface CodeFile { name: string; content: string }
-
-export interface InBrowserMCPOptions {
+export interface SandboxMCPOptions {
   sandbox: PyodideSandbox
-  getCodeFiles: () => CodeFile[]
   getEnvVars: () => Record<string, string>
 }
 
 /**
- * Spins up an MCP server + client pair entirely in the current browser context.
- * The server wraps the Pyodide sandbox as MCP tools; the client is returned for
- * the agent loop to discover/dispatch tools through the standard MCP protocol.
+ * A *generic* sandbox MCP server. Mirrors what a real container-backed sandbox
+ * (e.g. agent-infra) would expose: raw file IO plus shell execution. It knows
+ * nothing about "skills" — the business layer (or the agent itself) is
+ * responsible for populating /workspace.
  */
-export async function createInBrowserMCP(opts: InBrowserMCPOptions): Promise<Client> {
+export async function createSandboxMCP(opts: SandboxMCPOptions): Promise<Client> {
   const server = new Server(
-    { name: 'pyodide-sandbox', version: '0.1.0' },
-    { capabilities: { tools: {} } }
+    { name: 'sandbox', version: '0.1.0' },
+    {
+      capabilities: { tools: {} },
+      instructions:
+        'Ephemeral execution sandbox. Working directory is /workspace; it starts empty. ' +
+        'Use write_file to stage source files, then shell to run them (e.g. `python main.py`). ' +
+        'Files in /workspace are importable as Python modules.',
+    },
   )
 
   server.setRequestHandler(ListToolsRequestSchema, async () => ({
@@ -32,14 +35,13 @@ export async function createInBrowserMCP(opts: InBrowserMCPOptions): Promise<Cli
       {
         name: 'shell',
         description:
-          'Run a shell command in the Python sandbox. Use "python script.py args" to run scripts, or "python -c \'code\'" for inline Python. All skill files are pre-loaded in the working directory.',
+          'Execute a shell-like command in the sandbox. Supports: `python script.py [args...]`, `python -c "<inline code>"`, or a raw Python expression. Working directory is /workspace.',
         inputSchema: {
           type: 'object',
           properties: {
             command: {
               type: 'string',
-              description:
-                'The shell command to execute, e.g. "python main.py --city Tokyo" or "python -c \\"from main import func; print(func())\\"".',
+              description: 'Command to run, e.g. "python main.py --city Tokyo".',
             },
           },
           required: ['command'],
@@ -47,60 +49,92 @@ export async function createInBrowserMCP(opts: InBrowserMCPOptions): Promise<Cli
       },
       {
         name: 'list_files',
-        description:
-          'List files and directories in the current skill working directory. Use this to explore what the sandbox sees before invoking shell.',
+        description: 'List entries in a sandbox directory. Defaults to /workspace. Returns name + type (file|dir) for each entry.',
         inputSchema: {
           type: 'object',
-          properties: {},
+          properties: {
+            path: { type: 'string', description: 'Absolute path or path relative to /workspace. Defaults to /workspace.' },
+          },
+        },
+      },
+      {
+        name: 'read_file',
+        description: 'Read a text file from the sandbox. Paths are absolute or relative to /workspace.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'File path, e.g. "main.py" or "/workspace/pkg/mod.py".' },
+          },
+          required: ['path'],
+        },
+      },
+      {
+        name: 'write_file',
+        description: 'Write a text file to the sandbox, creating parent directories as needed. Overwrites if it exists.',
+        inputSchema: {
+          type: 'object',
+          properties: {
+            path: { type: 'string', description: 'Destination path, e.g. "main.py" or "/workspace/pkg/mod.py".' },
+            content: { type: 'string', description: 'File contents.' },
+          },
+          required: ['path', 'content'],
         },
       },
     ],
   }))
 
   server.setRequestHandler(CallToolRequestSchema, async (req) => {
-    const { name, arguments: args } = req.params
-    const codeFiles = opts.getCodeFiles()
-    const envVars = opts.getEnvVars()
+    const { name, arguments: rawArgs } = req.params
+    const args = (rawArgs ?? {}) as Record<string, unknown>
 
     if (name === 'shell') {
-      const command = typeof (args as Record<string, unknown>)?.command === 'string'
-        ? ((args as Record<string, unknown>).command as string)
-        : ''
+      const command = typeof args.command === 'string' ? args.command : ''
       if (!command) {
-        return {
-          content: [{ type: 'text', text: 'Error: missing "command" argument' }],
-          isError: true,
-        }
+        return { content: [{ type: 'text', text: 'Error: missing "command"' }], isError: true }
       }
-      const result = await opts.sandbox.execute(codeFiles, command, envVars)
+      const result = await opts.sandbox.execute(command, opts.getEnvVars())
       return {
-        content: [{
-          type: 'text',
-          text: result.success ? (result.output || '(no output)') : `Error: ${result.error}`,
-        }],
+        content: [{ type: 'text', text: result.success ? (result.output || '(no output)') : `Error: ${result.error}` }],
         isError: !result.success,
       }
     }
 
     if (name === 'list_files') {
-      const result = await opts.sandbox.execute(
-        codeFiles,
-        `python -c "import os; print('\\n'.join(sorted(os.listdir())))"`,
-        envVars,
-      )
+      const path = typeof args.path === 'string' ? args.path : undefined
+      const result = await opts.sandbox.listDir(path)
+      if (!result.success) {
+        return { content: [{ type: 'text', text: `Error: ${result.error}` }], isError: true }
+      }
+      const formatted = (result.entries ?? [])
+        .map(e => `${e.type === 'dir' ? 'd' : 'f'}  ${e.name}`)
+        .join('\n') || '(empty directory)'
       return {
-        content: [{
-          type: 'text',
-          text: result.success ? (result.output || '(empty)') : `Error: ${result.error}`,
-        }],
-        isError: !result.success,
+        content: [{ type: 'text', text: `${result.path}\n${formatted}` }],
       }
     }
 
-    return {
-      content: [{ type: 'text', text: `Unknown tool: ${name}` }],
-      isError: true,
+    if (name === 'read_file') {
+      const path = typeof args.path === 'string' ? args.path : ''
+      if (!path) return { content: [{ type: 'text', text: 'Error: missing "path"' }], isError: true }
+      const result = await opts.sandbox.readFile(path)
+      if (!result.success) {
+        return { content: [{ type: 'text', text: `Error: ${result.error}` }], isError: true }
+      }
+      return { content: [{ type: 'text', text: result.content ?? '' }] }
     }
+
+    if (name === 'write_file') {
+      const path = typeof args.path === 'string' ? args.path : ''
+      const content = typeof args.content === 'string' ? args.content : ''
+      if (!path) return { content: [{ type: 'text', text: 'Error: missing "path"' }], isError: true }
+      const result = await opts.sandbox.writeFile(path, content)
+      if (!result.success) {
+        return { content: [{ type: 'text', text: `Error: ${result.error}` }], isError: true }
+      }
+      return { content: [{ type: 'text', text: `Wrote ${result.path} (${content.length} bytes)` }] }
+    }
+
+    return { content: [{ type: 'text', text: `Unknown tool: ${name}` }], isError: true }
   })
 
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair()
@@ -114,5 +148,3 @@ export async function createInBrowserMCP(opts: InBrowserMCPOptions): Promise<Cli
 
   return client
 }
-
-export type { SkillFile }

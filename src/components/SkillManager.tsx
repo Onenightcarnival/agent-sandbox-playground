@@ -47,30 +47,37 @@ async function validateZip(file: File): Promise<SkillValidationResult> {
   if (topDirs.length === 1) prefix = topDirs[0]
 
   let skillMd = ''
-  const pyFiles: SkillFile[] = []
+  const skillFiles: SkillFile[] = []
   let requirements = ''
+
+  // Accepted text-like extensions for skill files. Everything else (binaries,
+  // compiled bytecode, editor junk) is ignored.
+  const TEXT_EXTS = /\.(py|json|ya?ml|toml|ini|cfg|md|txt|csv|tsv|xml|sql|sh|env)$/i
 
   for (const [path, zipEntry] of Object.entries(zip.files)) {
     if (zipEntry.dir) continue
     const relativePath = prefix ? path.replace(prefix, '') : path
     if (!relativePath) continue
+    // Skip common junk
+    if (relativePath.includes('__pycache__/') || relativePath.endsWith('.DS_Store')) continue
 
-    const content = await zipEntry.async('string')
     const fileName = relativePath.split('/').pop() || relativePath
 
     if (fileName.toLowerCase() === 'skill.md') {
-      skillMd = content
+      skillMd = await zipEntry.async('string')
     } else if (fileName === 'requirements.txt') {
-      requirements = content
-    } else if (fileName.endsWith('.py')) {
-      pyFiles.push({ name: relativePath, content })
+      requirements = await zipEntry.async('string')
+    } else if (TEXT_EXTS.test(fileName)) {
+      skillFiles.push({ name: relativePath, content: await zipEntry.async('string') })
     }
   }
+
+  const hasPy = skillFiles.some(f => f.name.endsWith('.py'))
 
   if (!skillMd) {
     errors.push({ level: 'error', message: 'SKILL.md is missing (required at the root of the skill)' })
   }
-  if (pyFiles.length === 0) {
+  if (!hasPy) {
     errors.push({ level: 'error', message: 'No .py files found — a skill needs at least one Python module' })
   }
 
@@ -122,7 +129,7 @@ async function validateZip(file: File): Promise<SkillValidationResult> {
     name,
     description,
     skillMd,
-    files: pyFiles,
+    files: skillFiles,
     requirements
   }
   return { skill, errors, warnings, fileName: file.name }

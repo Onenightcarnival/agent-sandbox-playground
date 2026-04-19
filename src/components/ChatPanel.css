@@ -51,9 +51,39 @@
   word-break: break-word;
 }
 
+.tool-result-wrapper {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-result-wrapper.collapsed .tool-result {
+  opacity: 0.7;
+}
+
 .tool-result {
   font-size: 12px;
   font-family: var(--vp-font-family-mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.tool-result-toggle {
+  align-self: flex-start;
+  background: transparent;
+  border: 1px dashed var(--vp-c-divider);
+  color: var(--vp-c-text-2);
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--vp-font-family-mono);
+  padding: 2px 8px;
+  border-radius: 4px;
+  transition: border-color 0.15s, color 0.15s;
+}
+
+.tool-result-toggle:hover {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
 }
 
 .tool-calls {

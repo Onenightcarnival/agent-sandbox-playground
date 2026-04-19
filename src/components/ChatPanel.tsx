@@ -2,6 +2,37 @@ import { useState, useRef, useEffect } from 'react'
 import type { ChatMessage } from '@/types'
 import './ChatPanel.css'
 
+/** Number of characters shown when a tool result is collapsed. */
+const TOOL_PREVIEW_CHARS = 120
+
+function ToolResult({ content }: { content: string }) {
+  const [expanded, setExpanded] = useState(false)
+  const isLong = content.length > TOOL_PREVIEW_CHARS
+  const displayed = expanded || !isLong ? content : content.slice(0, TOOL_PREVIEW_CHARS).replace(/\s+$/, '') + '…'
+  const firstLine = content.split('\n', 1)[0]
+  const lineCount = content.split('\n').length
+
+  return (
+    <div className={`tool-result-wrapper ${expanded ? 'expanded' : 'collapsed'}`}>
+      {isLong && !expanded && (
+        <button
+          className="tool-result-toggle"
+          onClick={() => setExpanded(true)}
+          title={firstLine}
+        >
+          ▸ Expand tool result ({content.length} chars, {lineCount} lines)
+        </button>
+      )}
+      <code className="tool-result">{displayed}</code>
+      {isLong && expanded && (
+        <button className="tool-result-toggle" onClick={() => setExpanded(false)}>
+          ▾ Collapse
+        </button>
+      )}
+    </div>
+  )
+}
+
 interface Props {
   messages: ChatMessage[]
   loading: boolean
@@ -52,7 +83,7 @@ export default function ChatPanel({ messages, loading, streamingContent, onSend,
             <div className="message-role">{msg.role}</div>
             <div className="message-content">
               {msg.role === 'tool' ? (
-                <code className="tool-result">{msg.content}</code>
+                <ToolResult content={msg.content} />
               ) : (
                 msg.content
               )}
