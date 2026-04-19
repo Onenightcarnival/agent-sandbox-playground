@@ -35,7 +35,8 @@ export default function Playground() {
   const [config, setConfig] = useState<LLMConfig>({ baseUrl: '', apiKey: '', modelId: '', toolMode: 'function_call' })
   const [skills, setSkills] = useState<Skill[]>([])
   const [selectedSkillId, setSelectedSkillId] = useState('')
-  const [selectedFileName, setSelectedFileName] = useState('SKILL.md')
+  const [openFiles, setOpenFiles] = useState<string[]>(['SKILL.md'])
+  const [activeFileName, setActiveFileName] = useState<string | null>('SKILL.md')
   const [messages, setMessages] = useState<ChatMessage[]>([])
   const [consoleEntries, setConsoleEntries] = useState<ConsoleEntry[]>([])
   const [loading, setLoading] = useState(false)
@@ -177,7 +178,8 @@ export default function Playground() {
   const handleAddSkill = (skill: Skill) => {
     setSkills(prev => [...prev, skill])
     setSelectedSkillId(skill.id)
-    setSelectedFileName('SKILL.md')
+    setOpenFiles(['SKILL.md'])
+    setActiveFileName('SKILL.md')
     appendConsole({
       type: 'info',
       message: `Loaded skill: ${skill.name} (${skill.files.length} files)`,
@@ -206,7 +208,8 @@ export default function Playground() {
       const next = prev.filter(s => s.id !== id)
       if (selectedSkillId === id) {
         setSelectedSkillId(next[0]?.id || '')
-        setSelectedFileName('SKILL.md')
+        setOpenFiles(['SKILL.md'])
+        setActiveFileName('SKILL.md')
       }
       return next
     })
@@ -214,7 +217,25 @@ export default function Playground() {
 
   const handleSelectSkill = (id: string) => {
     setSelectedSkillId(id)
-    setSelectedFileName('SKILL.md')
+    setOpenFiles(['SKILL.md'])
+    setActiveFileName('SKILL.md')
+  }
+
+  const handleOpenFile = (fileName: string) => {
+    setOpenFiles(prev => prev.includes(fileName) ? prev : [...prev, fileName])
+    setActiveFileName(fileName)
+  }
+
+  const handleCloseFile = (fileName: string) => {
+    setOpenFiles(prev => {
+      const idx = prev.indexOf(fileName)
+      if (idx === -1) return prev
+      const next = prev.filter(n => n !== fileName)
+      if (activeFileName === fileName) {
+        setActiveFileName(next[idx] ?? next[idx - 1] ?? null)
+      }
+      return next
+    })
   }
 
   const handleUpdateFile = (payload: { skillId: string; fileName: string; content: string }) => {
@@ -236,23 +257,28 @@ export default function Playground() {
   const handleAddFile = (skillId: string) => {
     setSkills(prev => prev.map(skill => {
       if (skill.id !== skillId) return skill
-      let name = 'new_module.py'
+      let name = 'scripts/new_module.py'
       let counter = 1
       while (skill.files.some(f => f.name === name)) {
-        name = `new_module_${counter++}.py`
+        name = `scripts/new_module_${counter++}.py`
       }
-      setSelectedFileName(name)
+      setOpenFiles(open => open.includes(name) ? open : [...open, name])
+      setActiveFileName(name)
       return { ...skill, files: [...skill.files, { name, content: '' }] }
     }))
   }
 
-  const handleRemoveFile = (payload: { skillId: string; fileName: string }) => {
+  const handleDeleteFile = (payload: { skillId: string; fileName: string }) => {
     setSkills(prev => prev.map(skill => {
       if (skill.id !== payload.skillId) return skill
       return { ...skill, files: skill.files.filter(f => f.name !== payload.fileName) }
     }))
-    if (selectedFileName === payload.fileName) {
-      setSelectedFileName('SKILL.md')
+    setOpenFiles(prev => prev.filter(n => n !== payload.fileName))
+    if (activeFileName === payload.fileName) {
+      setActiveFileName(prev => {
+        const remaining = openFiles.filter(n => n !== payload.fileName)
+        return remaining[0] ?? null
+      })
     }
   }
 
@@ -384,12 +410,14 @@ export default function Playground() {
                   <SkillEditor
                     skills={skills}
                     selectedSkillId={selectedSkillId}
-                    selectedFileName={selectedFileName}
-                    onSelectSkill={setSelectedSkillId}
-                    onSelectFile={setSelectedFileName}
+                    openFiles={openFiles}
+                    activeFileName={activeFileName}
+                    onSelectSkill={handleSelectSkill}
+                    onOpenFile={handleOpenFile}
+                    onCloseFile={handleCloseFile}
                     onUpdateFile={handleUpdateFile}
                     onAddFile={handleAddFile}
-                    onRemoveFile={handleRemoveFile}
+                    onDeleteFile={handleDeleteFile}
                   />
                 </div>
               </>
