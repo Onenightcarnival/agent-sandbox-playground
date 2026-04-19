@@ -10,17 +10,33 @@ interface Props {
   onSelect: (id: string) => void
 }
 
-const NAME_KEBAB = /^[a-z0-9]+(-[a-z0-9]+)*$/
-const DESC_MIN = 20
-const DESC_MAX = 500
+// Aligned with the open Agent Skills spec (agentskills.io) as enforced by
+// OpenAI's `quick_validate.py` in github.com/openai/skills:
+//   - SKILL.md filename is case-sensitive.
+//   - name: ^[a-z0-9-]+$, ≤64 chars, no leading/trailing/consecutive hyphens.
+//   - description: non-empty, ≤1024 chars, no `<` or `>` (no XML-style tags).
+//   - Allowed frontmatter keys: name, description, license, allowed-tools, metadata.
+const NAME_REGEX = /^[a-z0-9]+(-[a-z0-9]+)*$/
+const NAME_MAX = 64
+const DESC_MAX = 1024
+const ALLOWED_FRONTMATTER_KEYS = new Set([
+  'name', 'description', 'license', 'allowed-tools', 'metadata',
+])
 
-function parseFrontmatter(md: string): { raw: string | null; name: string | null; description: string | null } {
+function parseFrontmatter(md: string): {
+  raw: string | null
+  name: string | null
+  description: string | null
+  keys: string[]
+} {
   const match = md.match(/^---\s*\n([\s\S]*?)\n---/)
-  if (!match) return { raw: null, name: null, description: null }
+  if (!match) return { raw: null, name: null, description: null, keys: [] }
   const yaml = match[1]
   const name = yaml.match(/^name:\s*(.+)$/m)?.[1]?.trim() ?? null
   const description = yaml.match(/^description:\s*(.+)$/m)?.[1]?.trim() ?? null
-  return { raw: yaml, name: name || null, description: description || null }
+  // Top-level keys only (no indentation). Good enough for the spec's flat schema.
+  const keys = Array.from(yaml.matchAll(/^([A-Za-z0-9_-]+):/gm)).map(m => m[1])
+  return { raw: yaml, name: name || null, description: description || null, keys }
 }
 
 async function validateZip(file: File): Promise<SkillValidationResult> {
@@ -47,6 +63,7 @@ async function validateZip(file: File): Promise<SkillValidationResult> {
   if (topDirs.length === 1) prefix = topDirs[0]
 
   let skillMd = ''
+  let skillMdFileName: string | null = null
   const skillFiles: SkillFile[] = []
   let requirements = ''
 
@@ -62,23 +79,26 @@ async function validateZip(file: File): Promise<SkillValidationResult> {
     if (relativePath.includes('__pycache__/') || relativePath.endsWith('.DS_Store')) continue
 
     const fileName = relativePath.split('/').pop() || relativePath
+    const atRoot = !relativePath.includes('/')
 
-    if (fileName.toLowerCase() === 'skill.md') {
+    // SKILL.md must live at the skill root and use exact uppercase (spec requirement).
+    if (atRoot && fileName.toLowerCase() === 'skill.md') {
       skillMd = await zipEntry.async('string')
-    } else if (fileName === 'requirements.txt') {
+      skillMdFileName = fileName
+    } else if (atRoot && fileName === 'requirements.txt') {
       requirements = await zipEntry.async('string')
     } else if (TEXT_EXTS.test(fileName)) {
       skillFiles.push({ name: relativePath, content: await zipEntry.async('string') })
     }
   }
 
-  const hasPy = skillFiles.some(f => f.name.endsWith('.py'))
-
   if (!skillMd) {
-    errors.push({ level: 'error', message: 'SKILL.md is missing (required at the root of the skill)' })
-  }
-  if (!hasPy) {
-    errors.push({ level: 'error', message: 'No .py files found — a skill needs at least one Python module' })
+    errors.push({ level: 'error', message: 'SKILL.md is missing at the skill root (required by the Agent Skills spec)' })
+  } else if (skillMdFileName && skillMdFileName !== 'SKILL.md') {
+    errors.push({
+      level: 'error',
+      message: `SKILL.md filename must be uppercase (found "${skillMdFileName}"). The spec is case-sensitive.`,
+    })
   }
 
   // Frontmatter checks (only if SKILL.md exists)
@@ -94,10 +114,16 @@ async function validateZip(file: File): Promise<SkillValidationResult> {
         errors.push({ level: 'error', message: 'Frontmatter is missing `name:` field' })
       } else {
         name = fm.name
-        if (!NAME_KEBAB.test(fm.name)) {
-          warnings.push({
-            level: 'warning',
-            message: `name "${fm.name}" is not kebab-case (lowercase letters/digits, hyphen-separated). Models may trigger it less reliably.`
+        if (fm.name.length > NAME_MAX) {
+          errors.push({
+            level: 'error',
+            message: `name "${fm.name}" exceeds ${NAME_MAX} chars (${fm.name.length}).`,
+          })
+        }
+        if (!NAME_REGEX.test(fm.name)) {
+          errors.push({
+            level: 'error',
+            message: `name "${fm.name}" is not valid. Must match /^[a-z0-9-]+$/ with no leading/trailing/consecutive hyphens.`,
           })
         }
       }
@@ -105,19 +131,49 @@ async function validateZip(file: File): Promise<SkillValidationResult> {
         errors.push({ level: 'error', message: 'Frontmatter is missing `description:` field (the LLM uses this to decide when to trigger the skill)' })
       } else {
         description = fm.description
-        if (fm.description.length < DESC_MIN) {
-          warnings.push({
-            level: 'warning',
-            message: `description is very short (${fm.description.length} chars). Include what the skill does and when to use it so the LLM can trigger it correctly.`
+        if (fm.description.length > DESC_MAX) {
+          errors.push({
+            level: 'error',
+            message: `description exceeds ${DESC_MAX} chars (${fm.description.length}).`,
           })
-        } else if (fm.description.length > DESC_MAX) {
-          warnings.push({
-            level: 'warning',
-            message: `description is long (${fm.description.length} chars). Long descriptions clutter the system prompt — keep it concise.`
+        }
+        if (/[<>]/.test(fm.description)) {
+          errors.push({
+            level: 'error',
+            message: 'description must not contain `<` or `>` (spec forbids XML-style tags).',
           })
         }
       }
+      // Unknown frontmatter keys: spec only sanctions name/description/license/allowed-tools/metadata.
+      const unknown = fm.keys.filter(k => !ALLOWED_FRONTMATTER_KEYS.has(k))
+      if (unknown.length > 0) {
+        warnings.push({
+          level: 'warning',
+          message: `Unknown frontmatter key(s): ${unknown.join(', ')}. Spec allows only: ${[...ALLOWED_FRONTMATTER_KEYS].join(', ')}.`,
+        })
+      }
     }
+  }
+
+  // Top-level folder name in the zip should match the skill name (OpenAI convention).
+  if (skillMd && name !== 'Unnamed Skill' && prefix) {
+    const folder = prefix.replace(/\/$/, '')
+    if (folder !== name) {
+      errors.push({
+        level: 'error',
+        message: `Top-level folder "${folder}" does not match frontmatter name "${name}". The spec requires them to match.`,
+      })
+    }
+  }
+
+  // Convention: OpenAI's official skills place all Python under `scripts/`.
+  // Warn (don't fail) on any .py at the skill root.
+  const rootPy = skillFiles.filter(f => f.name.endsWith('.py') && !f.name.includes('/'))
+  if (rootPy.length > 0) {
+    warnings.push({
+      level: 'warning',
+      message: `Python file(s) at skill root: ${rootPy.map(f => f.name).join(', ')}. OpenAI convention places code under scripts/.`,
+    })
   }
 
   if (errors.length > 0) {
