@@ -1,14 +1,22 @@
 import { useMemo, useState, useEffect, useCallback } from 'react'
 import { marked } from 'marked'
-import CodeEditor from './CodeEditor'
+import CodeEditor, { type RevealLine } from './CodeEditor'
 import type { Skill } from '@/types'
 import './SkillEditor.css'
+
+export interface PendingReveal {
+  fileName: string
+  line: number
+  column?: number
+  nonce: number
+}
 
 interface Props {
   skills: Skill[]
   selectedSkillId: string
   openFiles: string[]
   activeFileName: string | null
+  pendingReveal?: PendingReveal | null
   onSelectSkill: (id: string) => void
   onOpenFile: (name: string) => void
   onCloseFile: (name: string) => void
@@ -133,7 +141,7 @@ function languageFor(name: string): 'python' | 'markdown' {
 }
 
 export default function SkillEditor({
-  skills, selectedSkillId, openFiles, activeFileName,
+  skills, selectedSkillId, openFiles, activeFileName, pendingReveal,
   onSelectSkill, onOpenFile, onCloseFile, onUpdateFile, onAddFile, onDeleteFile
 }: Props) {
   const currentSkill = useMemo(
@@ -297,10 +305,15 @@ export default function SkillEditor({
               ) : (
                 <div className="editor-wrapper">
                   <CodeEditor
-                    key={`${selectedSkillId}-${activeFileName}`}
                     value={currentFileContent}
                     language={currentLanguage}
+                    modelKey={`${selectedSkillId}/${activeFileName}`}
                     onChange={handleContentChange}
+                    revealLine={
+                      pendingReveal && pendingReveal.fileName === activeFileName
+                        ? { line: pendingReveal.line, column: pendingReveal.column, nonce: pendingReveal.nonce } satisfies RevealLine
+                        : null
+                    }
                   />
                 </div>
               )

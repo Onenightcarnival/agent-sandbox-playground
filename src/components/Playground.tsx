@@ -1,16 +1,18 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react'
 import ConfigPanel from './ConfigPanel'
 import SkillManager from './SkillManager'
-import SkillEditor from './SkillEditor'
+import SkillEditor, { type PendingReveal } from './SkillEditor'
 import InspectPanel, { type EnvVar } from './InspectPanel'
 import ChatPanel from './ChatPanel'
 import ConsolePanel from './ConsolePanel'
+import CommandPalette, { type PaletteCommand, type PaletteFile, type PaletteMode } from './CommandPalette'
 import { createClient } from '@/agent/openai-client'
 import { runAgentLoop, type NamedMCPClient } from '@/agent/loop'
 import { DEFAULT_SYSTEM_PROMPT } from '@/agent/default-prompt'
 import { PyodideSandbox } from '@/sandbox/sandbox'
 import { createSandboxMCP } from '@/mcp/sandbox-server'
 import { createFSMCP } from '@/mcp/fs-server'
+import { useCosmicTheme } from '@/hooks/useCosmicTheme'
 import type { Client as MCPClient } from '@modelcontextprotocol/sdk/client/index.js'
 import type { Tool as MCPTool } from '@modelcontextprotocol/sdk/types.js'
 import type { LLMConfig, ChatMessage, ConsoleEntry, Skill } from '@/types'
@@ -63,6 +65,9 @@ export default function Playground() {
   const [mcpServers, setMcpServers] = useState<MCPServerInfo[]>([])
   const [workspaceRefreshKey, setWorkspaceRefreshKey] = useState(0)
   const bumpWorkspace = useCallback(() => setWorkspaceRefreshKey(k => k + 1), [])
+  const [paletteMode, setPaletteMode] = useState<PaletteMode | null>(null)
+  const [pendingReveal, setPendingReveal] = useState<PendingReveal | null>(null)
+  const { theme, toggleTheme } = useCosmicTheme()
 
   useEffect(() => {
     try {
@@ -102,6 +107,20 @@ export default function Playground() {
   // skills/env — captured via getters at server-creation time.
   useEffect(() => { skillsRef.current = skills }, [skills])
   useEffect(() => { envVarsRef.current = envVars }, [envVars])
+
+  // Global IDE-style shortcuts for the command palette.
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.metaKey || e.ctrlKey
+      if (!mod) return
+      const key = e.key.toLowerCase()
+      if (e.shiftKey && key === 'p') { e.preventDefault(); setPaletteMode('command') }
+      else if (e.shiftKey && key === 'f') { e.preventDefault(); setPaletteMode('search') }
+      else if (!e.shiftKey && key === 'p') { e.preventDefault(); setPaletteMode('file') }
+    }
+    window.addEventListener('keydown', handler)
+    return () => window.removeEventListener('keydown', handler)
+  }, [])
 
   const appendConsole = useCallback((entry: ConsoleEntry) => {
     setConsoleEntries(prev => [...prev, entry])
@@ -226,6 +245,12 @@ export default function Playground() {
     setOpenFiles(prev => prev.includes(fileName) ? prev : [...prev, fileName])
     setActiveFileName(fileName)
   }
+
+  const handleOpenFileAtLine = useCallback((fileName: string, line: number, column?: number) => {
+    setOpenFiles(prev => prev.includes(fileName) ? prev : [...prev, fileName])
+    setActiveFileName(fileName)
+    setPendingReveal({ fileName, line, column, nonce: Date.now() })
+  }, [])
 
   const handleCloseFile = (fileName: string) => {
     setOpenFiles(prev => {
@@ -365,6 +390,47 @@ export default function Playground() {
     setStreamingContent('')
   }
 
+  const paletteFiles = useMemo<PaletteFile[]>(() => {
+    const skill = skills.find(s => s.id === selectedSkillId)
+    if (!skill) return []
+    const out: PaletteFile[] = [{ path: 'SKILL.md', content: skill.skillMd }]
+    for (const f of skill.files) out.push({ path: f.name, content: f.content })
+    if (skill.requirements) out.push({ path: 'requirements.txt', content: skill.requirements })
+    return out
+  }, [skills, selectedSkillId])
+
+  const paletteCommands = useMemo<PaletteCommand[]>(() => {
+    const cmds: PaletteCommand[] = []
+    if (activeFileName) {
+      cmds.push({
+        id: 'close-tab',
+        label: `Close Tab: ${activeFileName}`,
+        run: () => handleCloseFile(activeFileName),
+      })
+    }
+    cmds.push({
+      id: 'toggle-fullscreen',
+      label: editorFullscreen ? 'Exit Fullscreen Editor' : 'Enter Fullscreen Editor',
+      run: () => setEditorFullscreen(f => !f),
+    })
+    cmds.push({
+      id: 'toggle-theme',
+      label: theme === 'night' ? 'Theme: Switch to Dusk' : 'Theme: Switch to Night',
+      run: toggleTheme,
+    })
+    for (const s of skills) {
+      if (s.id !== selectedSkillId) {
+        cmds.push({
+          id: `switch-skill-${s.id}`,
+          label: `Switch Skill: ${s.name}`,
+          run: () => handleSelectSkill(s.id),
+        })
+      }
+    }
+    return cmds
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [activeFileName, editorFullscreen, theme, toggleTheme, skills, selectedSkillId])
+
   const layoutClass = [
     'main-layout',
     editorFullscreen && 'editor-fullscreen',
@@ -425,6 +491,7 @@ export default function Playground() {
                     selectedSkillId={selectedSkillId}
                     openFiles={openFiles}
                     activeFileName={activeFileName}
+                    pendingReveal={pendingReveal}
                     onSelectSkill={handleSelectSkill}
                     onOpenFile={handleOpenFile}
                     onCloseFile={handleCloseFile}
@@ -499,6 +566,18 @@ export default function Playground() {
 
       {!sandboxReady && (
         <div className="sandbox-status">Loading Pyodide sandbox...</div>
+      )}
+
+      {paletteMode && (
+        <CommandPalette
+          mode={paletteMode}
+          files={paletteFiles}
+          commands={paletteCommands}
+          onClose={() => setPaletteMode(null)}
+          onModeChange={setPaletteMode}
+          onOpenFile={handleOpenFile}
+          onOpenFileAtLine={handleOpenFileAtLine}
+        />
       )}
     </div>
   )

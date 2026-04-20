@@ -5,6 +5,7 @@
   overflow: hidden;
 }
 
-.code-editor .cm-editor {
-  height: 100%;
+.code-editor .monaco-editor,
+.code-editor .monaco-editor .overflow-guard {
+  border-radius: 6px;
 }

@@ -1,86 +1,122 @@
 import { useEffect, useRef } from 'react'
-import { EditorState } from '@codemirror/state'
-import { EditorView, keymap, placeholder as cmPlaceholder, lineNumbers, highlightActiveLineGutter, highlightActiveLine } from '@codemirror/view'
-import { defaultKeymap, history, historyKeymap } from '@codemirror/commands'
-import { python } from '@codemirror/lang-python'
-import { markdown } from '@codemirror/lang-markdown'
-import { oneDark } from '@codemirror/theme-one-dark'
-import { syntaxHighlighting, defaultHighlightStyle, bracketMatching } from '@codemirror/language'
-import { closeBrackets } from '@codemirror/autocomplete'
+import { ensureMonacoConfigured, themeIdFor, monaco } from '@/monaco/setup'
+import { useCosmicTheme } from '@/hooks/useCosmicTheme'
 import './CodeEditor.css'
+
+export interface RevealLine {
+  line: number
+  column?: number
+  /** Bump to re-trigger a reveal for the same line. */
+  nonce: number
+}
 
 interface Props {
   value: string
   language: 'python' | 'markdown'
-  placeholder?: string
+  /** Stable key per file — used to cache per-file models so undo history and
+   *  scroll position are preserved across tab switches. */
+  modelKey: string
   onChange: (value: string) => void
+  revealLine?: RevealLine | null
 }
 
-export default function CodeEditor({ value, language, placeholder, onChange }: Props) {
+export default function CodeEditor({ value, language, modelKey, onChange, revealLine }: Props) {
   const containerRef = useRef<HTMLDivElement>(null)
-  const viewRef = useRef<EditorView | null>(null)
+  const editorRef = useRef<monaco.editor.IStandaloneCodeEditor | null>(null)
+  const modelsRef = useRef<Map<string, monaco.editor.ITextModel>>(new Map())
   const onChangeRef = useRef(onChange)
+  const suppressChangeRef = useRef(false)
+  const { theme } = useCosmicTheme()
 
-  useEffect(() => {
-    onChangeRef.current = onChange
-  }, [onChange])
+  useEffect(() => { onChangeRef.current = onChange }, [onChange])
 
-  // Create the view once per (language, placeholder). Recreating per value would
-  // lose cursor/selection state on every keystroke, so we sync via dispatch below.
   useEffect(() => {
     if (!containerRef.current) return
+    ensureMonacoConfigured()
 
-    const langExtension = language === 'python' ? python() : markdown()
-
-    const state = EditorState.create({
-      doc: value,
-      extensions: [
-        lineNumbers(),
-        highlightActiveLineGutter(),
-        highlightActiveLine(),
-        history(),
-        bracketMatching(),
-        closeBrackets(),
-        keymap.of([...defaultKeymap, ...historyKeymap]),
-        langExtension,
-        oneDark,
-        syntaxHighlighting(defaultHighlightStyle, { fallback: true }),
-        EditorView.updateListener.of((update) => {
-          if (update.docChanged) {
-            onChangeRef.current(update.state.doc.toString())
-          }
-        }),
-        EditorView.lineWrapping,
-        EditorView.theme({
-          '&': { height: '100%', fontSize: '13px' },
-          '.cm-scroller': { overflow: 'auto' },
-          '.cm-content': { fontFamily: 'var(--vp-font-family-mono)' }
-        }),
-        ...(placeholder ? [cmPlaceholder(placeholder)] : [])
-      ]
+    const editor = monaco.editor.create(containerRef.current, {
+      theme: themeIdFor(theme),
+      automaticLayout: true,
+      fontFamily: 'var(--vp-font-family-mono), ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace',
+      fontSize: 13,
+      lineHeight: 20,
+      minimap: { enabled: false },
+      scrollBeyondLastLine: false,
+      wordWrap: 'on',
+      tabSize: 4,
+      renderLineHighlight: 'line',
+      smoothScrolling: true,
+      cursorBlinking: 'smooth',
+      padding: { top: 8, bottom: 8 },
+      fixedOverflowWidgets: true,
     })
 
-    const view = new EditorView({ state, parent: containerRef.current })
-    viewRef.current = view
+    const disp = editor.onDidChangeModelContent(() => {
+      if (suppressChangeRef.current) return
+      const model = editor.getModel()
+      if (model) onChangeRef.current(model.getValue())
+    })
+
+    editorRef.current = editor
 
     return () => {
-      view.destroy()
-      viewRef.current = null
+      disp.dispose()
+      editor.dispose()
+      for (const m of modelsRef.current.values()) m.dispose()
+      modelsRef.current.clear()
+      editorRef.current = null
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [language, placeholder])
+  }, [])
 
-  // Sync external value -> editor doc when they diverge
+  // Theme follows cosmic theme toggle.
   useEffect(() => {
-    const view = viewRef.current
-    if (!view) return
-    const current = view.state.doc.toString()
-    if (current !== value) {
-      view.dispatch({
-        changes: { from: 0, to: current.length, insert: value }
-      })
+    monaco.editor.setTheme(themeIdFor(theme))
+  }, [theme])
+
+  // Swap the model when the active file (or its language) changes.
+  useEffect(() => {
+    const editor = editorRef.current
+    if (!editor) return
+
+    let model = modelsRef.current.get(modelKey)
+    if (!model) {
+      model = monaco.editor.createModel(value, language)
+      modelsRef.current.set(modelKey, model)
+    } else {
+      if (model.getLanguageId() !== language) {
+        monaco.editor.setModelLanguage(model, language)
+      }
+      if (model.getValue() !== value) {
+        suppressChangeRef.current = true
+        model.setValue(value)
+        suppressChangeRef.current = false
+      }
     }
-  }, [value])
+    editor.setModel(model)
+  }, [modelKey, language]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  // External value → model sync (e.g. agent wrote to the file while open).
+  useEffect(() => {
+    const model = modelsRef.current.get(modelKey)
+    if (!model) return
+    if (model.getValue() !== value) {
+      suppressChangeRef.current = true
+      model.setValue(value)
+      suppressChangeRef.current = false
+    }
+  }, [value, modelKey])
+
+  // Reveal-line pulses from the palette (search result jump).
+  useEffect(() => {
+    if (!revealLine) return
+    const editor = editorRef.current
+    if (!editor) return
+    const position = { lineNumber: revealLine.line, column: revealLine.column ?? 1 }
+    editor.revealLineInCenter(revealLine.line)
+    editor.setPosition(position)
+    editor.focus()
+  }, [revealLine?.nonce]) // eslint-disable-line react-hooks/exhaustive-deps
 
   return <div ref={containerRef} className="code-editor" />
 }
