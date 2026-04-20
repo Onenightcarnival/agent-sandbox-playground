@@ -191,6 +191,31 @@ async function validateZip(file: File): Promise<SkillValidationResult> {
   return { skill, errors, warnings, fileName: file.name }
 }
 
+async function exportSkillAsZip(skill: Skill): Promise<Blob> {
+  const zip = new JSZip()
+  const root = zip.folder(skill.name)
+  if (!root) throw new Error('Failed to create zip root folder')
+  root.file('SKILL.md', skill.skillMd)
+  if (skill.requirements) {
+    root.file('requirements.txt', skill.requirements)
+  }
+  for (const f of skill.files) {
+    root.file(f.name, f.content)
+  }
+  return zip.generateAsync({ type: 'blob' })
+}
+
+function triggerDownload(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = filename
+  document.body.appendChild(a)
+  a.click()
+  document.body.removeChild(a)
+  URL.revokeObjectURL(url)
+}
+
 export default function SkillManager({ skills, onAdd, onRemove, onSelect }: Props) {
   const [dragging, setDragging] = useState(false)
   const [results, setResults] = useState<SkillValidationResult[]>([])
@@ -291,11 +316,27 @@ export default function SkillManager({ skills, onAdd, onRemove, onSelect }: Prop
                   {skill.requirements && <span> · has requirements.txt</span>}
                 </div>
               </div>
-              <button
-                className="remove-btn"
-                onClick={(e) => { e.stopPropagation(); onRemove(skill.id) }}
-                title="Remove skill"
-              >×</button>
+              <div className="skill-actions">
+                <button
+                  className="download-btn"
+                  onClick={async (e) => {
+                    e.stopPropagation()
+                    try {
+                      const blob = await exportSkillAsZip(skill)
+                      triggerDownload(blob, `${skill.name}.zip`)
+                    } catch (err) {
+                      console.error('Failed to export skill', err)
+                    }
+                  }}
+                  title="Download skill as .zip"
+                  aria-label="Download skill"
+                >↓</button>
+                <button
+                  className="remove-btn"
+                  onClick={(e) => { e.stopPropagation(); onRemove(skill.id) }}
+                  title="Remove skill"
+                >×</button>
+              </div>
             </div>
           ))}
         </div>

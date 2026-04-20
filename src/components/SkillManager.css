@@ -82,6 +82,14 @@
   margin-top: 2px;
 }
 
+.skill-actions {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.download-btn,
 .remove-btn {
   flex-shrink: 0;
   width: 24px;
@@ -89,12 +97,21 @@
   border: none;
   background: transparent;
   color: var(--vp-c-text-3);
-  font-size: 18px;
+  font-size: 16px;
   cursor: pointer;
   border-radius: 4px;
   display: flex;
   align-items: center;
   justify-content: center;
+}
+
+.remove-btn {
+  font-size: 18px;
+}
+
+.download-btn:hover {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
 }
 
 .remove-btn:hover {
