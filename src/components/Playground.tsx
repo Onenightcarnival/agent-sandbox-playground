@@ -536,6 +536,7 @@ export default function Playground() {
               messages={messages}
               loading={loading}
               streamingContent={streamingContent}
+              skills={skills}
               onSend={handleSend}
               onStop={handleStop}
             />

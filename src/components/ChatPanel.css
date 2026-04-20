@@ -120,9 +120,55 @@
   box-shadow: 0 2px 16px rgba(0, 0, 0, 0.25);
 }
 
-.input-box textarea {
+.textarea-wrap {
+  position: relative;
   flex: 1;
+  min-width: 0;
+}
+
+/*
+ * The mirror sits behind the textarea and renders the same text with skill
+ * tokens wrapped in chip spans. The textarea's text color is transparent so
+ * only the mirror is visible — but the caret remains via caret-color.
+ * Every font/layout property MUST match the textarea exactly, or wrapped
+ * lines will drift and chips will be mispositioned.
+ */
+.highlight-mirror {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
   padding: 2px 0;
+  margin: 0;
+  border: none;
+  color: var(--vp-c-text-1);
+  font-size: 14px;
+  line-height: 22px;
+  font-family: inherit;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: hidden;
+  max-height: 132px;
+}
+
+/*
+ * Chip styling must be layout-neutral: no padding, no margin, no font-weight
+ * change. Any width-affecting property here would desync the mirror's text
+ * width from the underlying textarea and the caret would drift — very
+ * visible with CJK text. Use only color + background + shadow for emphasis.
+ */
+.skill-chip {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-brand-1);
+  border-radius: 3px;
+  box-shadow: 0 0 0 2px var(--vp-c-brand-soft);
+}
+
+.input-box textarea {
+  position: relative;
+  display: block;
+  width: 100%;
+  padding: 2px 0;
+  margin: 0;
   border: none;
   background: transparent;
   color: var(--vp-c-text-1);
@@ -132,10 +178,90 @@
   font-family: inherit;
   max-height: 132px;
   overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+/* When chips are present, hide the textarea's own text and let the mirror
+ * render it with highlights. The caret stays visible via caret-color. */
+.textarea-wrap.has-chips textarea {
+  color: transparent;
+  caret-color: var(--vp-c-text-1);
+}
+
+.textarea-wrap:not(.has-chips) .highlight-mirror {
+  display: none;
 }
 
 .input-box textarea:focus {
   outline: none;
+}
+
+.input-box textarea::selection {
+  background: var(--vp-c-brand-soft);
+  color: var(--vp-c-text-1);
+}
+
+.skill-menu {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: calc(100% + 8px);
+  max-height: 220px;
+  overflow-y: auto;
+  background: var(--vp-c-bg-soft);
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 10px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.28);
+  padding: 4px;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skill-menu-hint {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--vp-c-text-3);
+  padding: 4px 8px 2px;
+}
+
+.skill-menu-item {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: 6px 10px;
+  border: none;
+  background: transparent;
+  border-radius: 6px;
+  cursor: pointer;
+  text-align: left;
+  color: var(--vp-c-text-1);
+  font-family: inherit;
+}
+
+.skill-menu-item.active,
+.skill-menu-item:hover {
+  background: var(--vp-c-brand-soft);
+}
+
+.skill-menu-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--vp-c-brand-1);
+  font-family: var(--vp-font-family-mono);
+}
+
+.skill-menu-desc {
+  font-size: 11px;
+  color: var(--vp-c-text-2);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 100%;
 }
 
 .send-icon-btn {
